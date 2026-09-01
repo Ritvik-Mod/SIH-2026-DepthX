@@ -1,0 +1,25 @@
+#!/bin/bash
+#PBS -N dw_sundegen
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=32gb
+#PBS -l walltime=01:00:00
+#PBS -o logs/sundegen.out
+#PBS -j oe
+#
+# Tests whether the cached sun azimuths are degenerate under reflection about the
+# north-south axis (az vs 360-az), which the antipodal check (az vs az+180) does not
+# cover.  Decides whether A6's supervision is sound before A6 reaches the front of the
+# ladder queue.  Read-only: touches nothing the ladder uses.
+#
+# _common.sh picks the least-used GPU, so this runs on the second L40 alongside the
+# ladder rather than contending with it.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+python scripts/check_sun_degeneracy.py \
+    --root "$DATA_ROOT/GAMUS" \
+    --cache "$DATA_ROOT/GAMUS/sun_angles.json" \
+    --splits train val \
+    --per-city 200 \
+    --gsd 0.33 \
+    --device cuda \
+    --dump-iou "$DATA_ROOT/GAMUS/sun_iou.json"

@@ -189,7 +189,8 @@ Fetch only the ones you need.
 | Why is it queued | `qstat -f <jobid> \| grep -i comment` |
 | Kill | `qdel <jobid>` |
 | Hold / release | `qhold <jobid>` / `qrls <jobid>` |
-| Live log | `tail -f logs/train.out` |
+| Live log | `tail -f logs/<jobname>.live` |
+| Finished log | `cat logs/<name>.out` (PBS writes this only at job end) |
 | Queue limits | `qstat -Qf` |
 
 ## Traps specific to this cluster
@@ -202,4 +203,8 @@ Fetch only the ones you need.
   check whether scratch is purged on a timer.
 - **`#PBS -m abe`** mails on abort/begin/end. Useful for overnight runs; noisy for a chain
   of eight, so drop the `b` if you get spammed.
+- **PBS does not stream job output.** stdout is spooled on the execution node and copied
+  to the `#PBS -o` path only when the job ends, so `tail -f` on it shows nothing mid-run.
+  `_common.sh` mirrors everything to `logs/<jobname>.live` on the shared filesystem —
+  tail that instead.
 - **Never run training on the login node.** It is shared, and admins kill long processes.

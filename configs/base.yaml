@@ -1,0 +1,92 @@
+# DepthWizard — height estimation config.  Ablations A0..A7 toggle flags here.
+seed: 1337
+out_dir: outputs/run
+
+data:
+  root: data/GAMUS          # expects images/ heights/ classes/ under here
+  split_mode: official      # official | city_holdout
+  holdout_cities: [NYC]     # used when split_mode == city_holdout
+  crop: 518
+  h_max: 250.0              # metres; clip target above this (run scripts/dataset_stats.py to refine)
+  gsd_base: 0.33            # metres/pixel, GAMUS paper sec.1: "images with a resolution of 0.33m"
+  # trained GSD coverage is gsd_base * [scale_min, scale_max] = 0.17..0.65 m/px.
+  # Coarser imagery (e.g. 1 m Cartosat MX) is outside that range -- state it.
+  # scale augmentation: crop a window of round(crop*s) source px and resize to crop.
+  # effective gsd = s * gsd_base.  s<1 zooms in (finer gsd), s>1 zooms out (coarser).
+  # upper bound is source_size/crop = 1024/518 = 1.977 before the window exceeds the tile.
+  scale_min: 0.5
+  scale_max: 1.97
+  num_workers: 4
+  sun_cache: null           # path to json of {tile_id: [elev_deg, azim_deg]}
+
+aug:
+  geometric: true           # flips + rot90.  MUST be false when shadow loss is on
+  photometric: true
+  p_haze: 0.3
+  p_gray: 0.15
+  p_noise: 0.3
+  p_jpeg: 0.3
+  p_blur: 0.2
+
+model:
+  checkpoint: depth-anything/Depth-Anything-V2-Small-hf
+  head: bins                # bins | regression
+  n_bins: 128
+  use_gsd: true             # FiLM conditioning
+  use_semantic: true
+  n_classes: 7
+  ignore_index: 0           # id 0 is unlabelled/background; ids 1..6 are the real classes
+  use_uncertainty: false
+  h_max: 250.0
+
+loss:
+  w_silog: 1.0
+  w_l1: 1.0
+  w_grad: 0.5
+  w_bin_ce: 0.5
+  w_chamfer: 0.1
+  w_sem: 0.2
+  w_shadow: 0.0             # >0 requires sun angles AND aug.geometric=false
+  w_nll: 0.0                # >0 replaces l1; requires model.use_uncertainty
+  silog_lambda: 0.85
+  silog_alpha: 10.0
+  grad_scales: 4
+  shadow:
+    tau: 1.0
+    tau_dark: 0.35
+    sigma_s: 0.08
+    local_contrast: true      # require dark BOTH absolutely and vs local background
+    bg_ksize: 65
+    tau_rel: 0.05
+    use_blue: true            # shadows are sky-lit and bluer; separates them from dark vegetation
+    tau_blue: 0.02
+    sigma_blue: 0.03
+    max_steps: 16
+    max_dist_px: 200
+    max_sun_elev: 60.0
+
+train:
+  epochs: 60
+  batch_size: 8
+  accum_steps: 1
+  lr_encoder: 1.0e-5
+  lr_decoder: 5.0e-5
+  lr_head: 1.0e-4
+  weight_decay: 0.01
+  warmup_steps: 1000
+  min_lr: 1.0e-6
+  clip_grad: 1.0
+  freeze_encoder_epochs: 2
+  amp_dtype: bf16           # bf16 | fp16 | none
+  ema_decay: 0.999
+  val_every: 1
+  log_every: 50
+  ckpt_every: 1000
+  resume: auto              # auto = continue from out_dir/last.pt | never | <path>
+
+infer:
+  tile: 518
+  overlap: 0.25
+  batch: 8
+  tta: false
+  level: true               # coarse-guided levelling

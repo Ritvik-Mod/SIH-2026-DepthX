@@ -1,0 +1,5 @@
+_base_: a5_domainrand.yaml
+# A7 -- ViT-L.  Run last, once the recipe is settled.  ~48 GB at batch 8.
+out_dir: outputs/a7_vitl
+model: {checkpoint: depth-anything/Depth-Anything-V2-Large-hf}
+train: {batch_size: 8, epochs: 40, ema_decay: 0.9995}

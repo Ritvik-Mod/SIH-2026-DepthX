@@ -1,0 +1,26 @@
+# environments
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# data and run artefacts — large, regenerable, or downloaded
+data/
+outputs/
+logs/
+*.pt
+*.pth
+*.h5
+*.tif
+*.npy
+hf_cache/
+
+# PBS job output
+*.out
+*.err
+discover.out
+
+# macOS
+.DS_Store
+Icon?

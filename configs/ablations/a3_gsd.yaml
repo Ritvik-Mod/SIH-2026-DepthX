@@ -1,0 +1,6 @@
+_base_: a2_bins.yaml
+# A3 -- + GSD conditioning and the scale augmentation that makes it learnable.
+# Without varied GSD, FiLM's first layer provably receives zero gradient.
+out_dir: outputs/a3_gsd
+model: {use_gsd: true}
+data: {scale_min: 0.5, scale_max: 1.97}

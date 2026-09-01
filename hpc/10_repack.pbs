@@ -1,0 +1,14 @@
+#!/bin/bash
+#PBS -N dw_repack
+#PBS -q workq
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -o logs/repack.out
+#PBS -j oe
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+# 80 GB -> ~50 GB.  classes float32->uint8 (exactly lossless, ids 0..6);
+# heights float32->float16 (max error ~0.015 m, two orders below the target MAE).
+python scripts/repack_gamus.py --root "$DATA_ROOT/GAMUS" --check
+python scripts/repack_gamus.py --root "$DATA_ROOT/GAMUS"
+du -sh "$DATA_ROOT/GAMUS"

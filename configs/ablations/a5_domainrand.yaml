@@ -1,0 +1,5 @@
+_base_: a4_semantic.yaml
+# A5 -- + domain randomisation.  Should SLIGHTLY HURT in-domain and clearly help the
+# city-held-out split.  Report both; the gap is the finding.
+out_dir: outputs/a5_domainrand
+aug: {photometric: true, p_haze: 0.3, p_gray: 0.15, p_noise: 0.3, p_jpeg: 0.3, p_blur: 0.2}

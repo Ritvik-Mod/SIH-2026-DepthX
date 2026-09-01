@@ -1,0 +1,5 @@
+_base_: a1_regression.yaml
+# A2 -- + adaptive bins.  Expect the signed building bias to improve most here.
+out_dir: outputs/a2_bins
+model: {head: bins}
+loss: {w_bin_ce: 0.5, w_chamfer: 0.1}

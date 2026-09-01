@@ -1,0 +1,10 @@
+_base_: a5_domainrand.yaml
+# A6 -- + shadow consistency.  Requires per-tile sun angles (scripts/estimate_sun.py)
+# and geometric augmentation OFF: a flip changes the apparent sun direction while the
+# supplied azimuth does not, so the loss would punish correct predictions.
+# Fine-tune from the A5 checkpoint; this is a refinement, not a from-scratch signal.
+out_dir: outputs/a6_shadow
+aug: {geometric: false}
+data: {sun_cache: data/GAMUS/sun_angles.json}
+loss: {w_shadow: 0.1}
+train: {epochs: 15, lr_encoder: 3.0e-6, lr_decoder: 1.0e-5, lr_head: 3.0e-5}

@@ -22,5 +22,5 @@ python scripts/zero_shot_eval.py --root "$DATA_ROOT/GAMUS" --split val --max-til
 # and only A6 consumes it, so A1-A5 must not wait behind it.
 
 echo; echo "=== 1-epoch timing probe: recalibrate every estimate from THIS number ==="
-/usr/bin/time -v python -m heightmap.train --config=configs/ablations/a1_regression.yaml \
+python -m heightmap.train --config=configs/ablations/a1_regression.yaml \
     data.root="$DATA_ROOT/GAMUS" train.epochs=1 out_dir=outputs/timing_probe 2>&1 | tail -25

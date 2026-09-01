@@ -120,6 +120,11 @@ def main():
 
     os.makedirs(a.out, exist_ok=True)
     tiles = index_tiles(a.root, a.split)
+    if not tiles:
+        sys.exit(f"FATAL: no tiles under {a.root}/{{images,heights,classes}}/{a.split}.\n"
+                 f"  Expected e.g. {a.root}/images/{a.split}/DC_xxx_RGB.h5\n"
+                 f"  Exiting nonzero rather than printing an empty list: a silent [] is "
+                 f"how a wrong --root looks like a working run.")
     by_city = {}
     for city, tid in tiles:
         by_city.setdefault(city, []).append(tid)
@@ -150,6 +155,10 @@ def main():
             cand.sort(reverse=True)
             chosen += [(city, t) for _s, t in cand[:a.per_city]]
 
+    if not chosen:
+        sys.exit(f"FATAL: {len(tiles)} tiles indexed across {sorted(by_city)}, but none "
+                 f"passed --min-building {a.min_building}. Lower it and retry.")
+    print(f"indexed {len(tiles)} tiles across {sorted(by_city)}; rendering {len(chosen)}")
     meta = []
     for city, tid in chosen:
         img, agl, cls = load(a.root, a.split, tid)

@@ -54,7 +54,11 @@ def main():
     check(1, "height finite, non-negative, within h_max",
           np.isfinite(h).all() and h.min() >= 0 and h.max() <= cfg.data.h_max + 1e-3,
           f"[{h.min():.1f}, {h.max():.1f}]")
-    ids = sorted(set(b["cls"].flatten().tolist()))
+    # scan several tiles, not one: the 255 nodata value appears only in some cities
+    ids = set()
+    for k in range(0, len(ds), max(1, len(ds) // 24)):
+        ids |= set(ds[k]["cls"].unique().tolist())
+    ids = sorted(ids)
     check(1, "classes are int64 within the documented id range",
           b["cls"].dtype == torch.int64 and min(ids) >= 0 and max(ids) < N_CLASSES,
           f"ids={ids} -> {[NAMES[i] for i in ids]}")

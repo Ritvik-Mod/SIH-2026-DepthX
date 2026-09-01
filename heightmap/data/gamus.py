@@ -122,7 +122,19 @@ class GamusDataset(Dataset):
         agl = np.clip(np.nan_to_num(agl, nan=0.0, posinf=0.0, neginf=0.0),
                       0.0, float(self.cfg.data.h_max))
 
-        s = T.Sample(rgb, agl, cls.astype(np.int64), mask, float(self.cfg.data.gsd_base))
+        # NYC labels carry a 255 nodata value that DC and PHL do not, and 255 is far
+        # outside the 0..6 range the semantic head predicts.  cross_entropy would raise
+        # a device-side assert and kill the job -- but only on the batches that happen
+        # to contain such a tile, so it survives a short smoke test.  Fold anything out
+        # of range into the ignore index.
+        cls = cls.astype(np.int64)
+        n_cls = int(self.cfg.model.n_classes)
+        ign = int(self.cfg.model.ignore_index)
+        bad = (cls < 0) | (cls >= n_cls)
+        if bad.any():
+            cls[bad] = ign if ign >= 0 else 0
+
+        s = T.Sample(rgb, agl, cls, mask, float(self.cfg.data.gsd_base))
         rng = np.random.default_rng(None if self.train else (hash(tid) & 0xFFFFFFFF))
 
         if self.train:

@@ -64,6 +64,31 @@ def sweep(h, obs, gsd, elev, az0, dev):
     return (inter / union).cpu().numpy()
 
 
+@torch.no_grad()
+def sweep_elev(h, obs, gsd, az, dev, lo=10.0, hi=70.0, step=3.0):
+    """IoU vs sun ELEVATION at the cached azimuth.
+
+    Azimuth sets shadow direction and the loss tolerates a wide error in it.  Elevation
+    enters occlusion() as t*gsd*tan(theta), so it sets the height-per-pixel the loss
+    enforces -- 40->50 deg moves tan(theta) 0.84 -> 1.19, a 42% change in implied height
+    scale.  If this curve is flat, the cached elevations are a default rather than a
+    measurement and A6's shadow term is anchored to an arbitrary height scale.
+    """
+    els = np.arange(lo, hi + 1e-6, step, dtype=np.float32)
+    n = len(els)
+    hb = h.expand(n, -1, -1, -1)
+    soft, rel = predicted_shadow(
+        hb, torch.full((n,), gsd, device=dev),
+        torch.tensor(els, dtype=torch.float32, device=dev),
+        torch.full((n,), float(az), device=dev),
+        tau=CFG.tau, max_steps=CFG.max_steps, max_dist_px=CFG.max_dist_px)
+    p = (soft > 0.5) & rel
+    o = (obs > 0.5) & rel
+    inter = (p & o).flatten(1).sum(1).float()
+    union = (p | o).flatten(1).sum(1).float().clamp(min=1.0)
+    return els, (inter / union).cpu().numpy()
+
+
 def load_tile(root, split, tid, size):
     with h5py.File(f"{root}/heights/{split}/{tid}_AGL.h5") as f:
         agl = np.asarray(f["image"][()], np.float32)
@@ -102,6 +127,13 @@ def main():
     ap.add_argument("--gsd", type=float, default=0.33)
     ap.add_argument("--size", type=int, default=512)
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
+    ap.add_argument("--max-dist-px", type=float, default=150.0,
+                    help="march length for the rescore.  estimate_sun.py fitted the "
+                         "cache at 150; configs/base.yaml gives the LOSS 200.  Re-run "
+                         "at 200 to see whether the cached elevations move.")
+    ap.add_argument("--loss-max-sun-elev", type=float, default=60.0,
+                    help="losses/shadow.py drops tiles at or above this elevation; "
+                         "mirrors loss.shadow.max_sun_elev so the silent drop is counted")
     ap.add_argument("--min-sep", type=float, default=40.0,
                     help="skip the mirror comparison when |wrap(360-2*az)| is below "
                          "this: the mirror is then within the IoU peak's own half-max "
@@ -111,7 +143,9 @@ def main():
     a = ap.parse_args()
 
     dev = torch.device("cuda" if (a.device != "cpu" and torch.cuda.is_available()) else "cpu")
-    print(f"device: {dev}")
+    CFG.max_dist_px = float(a.max_dist_px)
+    print(f"device: {dev}   max_dist_px {CFG.max_dist_px:.0f} "
+          f"(estimate_sun fitted at 150, loss uses configs/base.yaml max_dist_px)")
     cache = json.load(open(a.cache))
 
     # ---- exact azimuth histogram, no binning artefact: values are multiples of 10 ----
@@ -127,6 +161,23 @@ def main():
         line = [f"{k:>4d}:{cnt[k]:<5d}" for k in sorted(cnt) if cnt[k]]
         for i in range(0, len(line), 8):
             print("   " + "".join(line[i:i+8]))
+
+    # ---- how much of the cache does the loss actually consume?  shadow.py drops
+    # elev >= max_sun_elev and elev <= 1, silently: no error, just fewer supervised
+    # tiles.  An elevation estimator biased high pushes tiles over that cutoff. ----
+    print(f"\n=== tiles the A6 shadow loss would actually use "
+          f"(drops elev >= {a.loss_max_sun_elev:.0f}) ===")
+    tot_ok = 0
+    for c, v in sorted(by_city.items()):
+        el = np.array([x[0] for x in v], float)
+        ok = (el > 1.0) & (el < a.loss_max_sun_elev)
+        tot_ok += int(ok.sum())
+        qs = np.percentile(el, [10, 50, 90])
+        print(f"  {c:4s} n={len(v):5d}  elev p10/p50/p90 {qs[0]:5.1f}/{qs[1]:5.1f}/{qs[2]:5.1f}"
+              f"   usable {int(ok.sum()):5d} ({100*ok.mean():5.1f}%)"
+              f"   dropped at cutoff {int((el >= a.loss_max_sun_elev).sum()):5d}")
+    print(f"  TOTAL usable {tot_ok} of {len(cache)} cached, "
+          f"= {100.0*tot_ok/5863:.1f}% of the 5863 train+val tiles")
 
     # ---- two-cluster circular split: if the bimodality is real sorties, the spread
     # WITHIN a cluster is the true per-tile error, and the pooled sd overstates it ----
@@ -181,6 +232,7 @@ def main():
     print(f"\nrescoring {len(picked)} tiles, {NOFF} azimuths each")
 
     res = collections.defaultdict(list)
+    rese = collections.defaultdict(list)
     dump = {}
     for c, tid in tqdm(picked, disable=None, mininterval=10.0):
         t = load_tile(a.root, where[tid], tid, a.size)
@@ -194,6 +246,8 @@ def main():
                               CFG.bg_ksize, CFG.tau_rel, CFG.use_blue,
                               CFG.tau_blue, CFG.sigma_blue)
         v = sweep(h, obs, a.gsd, el, az, dev)
+        els, ve = sweep_elev(h, obs, a.gsd, az, dev)
+        rese[c].append((els, ve, el))
         k_mirror = int(round(((360.0 - 2.0 * az) % 360.0) / STEP)) % NOFF
         k_anti = NOFF // 2
         sep = abs(((360.0 - 2.0 * az) + 180.0) % 360.0 - 180.0)
@@ -236,6 +290,29 @@ def main():
         sel = (np.abs(off) <= 90)
         print("   offset " + " ".join(f"{int(o):>5d}" for o in off[sel]))
         print("   norm   " + " ".join(f"{x:5.2f}" for x in m[sel]))
+
+    print("\n=== elevation identifiability: mean normalised IoU vs sun elevation ===")
+    print("(azimuth held at the cached value; a flat curve means the cached elevation "
+          "is a\n default, not a measurement, and tan(theta) sets an arbitrary height "
+          "scale for A6)")
+    for c, rows in sorted(rese.items()):
+        els = rows[0][0]
+        cur, hit = [], []
+        for e_grid, v, el_cached in rows:
+            v = v.astype(float); rng = v.max() - v.min()
+            cur.append((v - v.min()) / rng if rng > 1e-9 else np.zeros_like(v))
+            hit.append(abs(float(e_grid[int(v.argmax())]) - float(el_cached)) <= 6.0)
+        m = np.mean(cur, 0)
+        half = els[m >= 0.5]
+        hw = (float(half.min()), float(half.max())) if half.size else (0.0, 0.0)
+        peak = float(els[int(m.argmax())])
+        med_cached = float(np.median([r[2] for r in rows]))
+        print(f"\n{c}  half-max {hw[0]:.0f}..{hw[1]:.0f} deg (width {hw[1]-hw[0]:.0f})"
+              f"  curve peak {peak:.0f}  cached p50 {med_cached:.0f}"
+              f"  argmax within one 6deg step of cached: {float(np.mean(hit)):.3f}")
+        sel = np.arange(0, len(els), 2)
+        print("   elev  " + " ".join(f"{int(els[i]):>5d}" for i in sel))
+        print("   norm  " + " ".join(f"{m[i]:5.2f}" for i in sel))
 
     if a.dump_iou:
         with open(a.dump_iou, "w") as f:

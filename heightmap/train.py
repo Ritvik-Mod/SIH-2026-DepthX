@@ -128,6 +128,27 @@ def main(argv=None):
     elif ck_path is not None:
         print(f"no checkpoint at {ck_path}; starting fresh")
 
+    # ---- warm start from ANOTHER run's weights --------------------------------
+    # Distinct from resume.  resume continues THIS run and restores epoch/optimiser, so
+    # pointing it at a finished run's checkpoint makes start_epoch land past the epoch
+    # count and the job exits having done nothing.  init_from takes only the weights and
+    # starts at epoch 0 with a fresh optimiser, which is what "fine-tune from A5" means.
+    # It is skipped when a resume already happened, so a walltime kill still continues.
+    init_from = str(getattr(cfg.train, "init_from", "") or "")
+    if init_from and start_epoch == 0:
+        ip = Path(init_from)
+        if not ip.exists():
+            raise FileNotFoundError(
+                f"train.init_from={ip} does not exist. Refusing to silently train from "
+                f"the pretrained backbone instead: that is a different experiment.")
+        ick = torch.load(ip, map_location=device, weights_only=False)
+        sd = ick.get("model", ick)
+        missing, unexpected = model.load_state_dict(sd, strict=False)
+        print(f"init_from {ip}: loaded weights, epoch/optimiser left fresh "
+              f"({len(missing)} missing, {len(unexpected)} unexpected keys)")
+        if missing or unexpected:
+            print(f"  missing={list(missing)[:8]}\n  unexpected={list(unexpected)[:8]}")
+
     if start_epoch >= int(cfg.train.epochs):
         print(f"already finished ({start_epoch}/{cfg.train.epochs} epochs). nothing to do.")
         return

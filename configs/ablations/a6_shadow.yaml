@@ -7,4 +7,9 @@ out_dir: outputs/a6_shadow
 aug: {geometric: false}
 data: {sun_cache: data/GAMUS/sun_angles.json}
 loss: {w_shadow: 0.1}
-train: {epochs: 40, lr_encoder: 3.0e-6, lr_decoder: 1.0e-5, lr_head: 3.0e-5}
+# init_from is what actually makes this a fine-tune.  Without it, resume=auto finds
+# nothing in an empty out_dir and A6 trains from the pretrained backbone for 40 epochs
+# at fine-tuning learning rates -- undertrained by construction, and it would have read
+# as "the shadow loss hurts".
+train: {epochs: 40, lr_encoder: 3.0e-6, lr_decoder: 1.0e-5, lr_head: 3.0e-5,
+        init_from: outputs/a5_domainrand/best.pt}

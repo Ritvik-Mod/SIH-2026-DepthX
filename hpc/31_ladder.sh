@@ -22,4 +22,9 @@ for CFG in configs/ablations/a1_regression.yaml \
   echo "queued $(basename "$CFG" .yaml)  ->  $JID"
   PREV="$JID"
 done
-echo; echo "watch with:  qstat -u \$USER -a"
+echo
+echo "watch with:  qstat -u \$USER -a"
+echo
+echo "NOTE: a6_shadow needs data/GAMUS/sun_angles.json."
+echo "      If 21_sunangles.pbs has not finished by then, a6 will fail fast on the"
+echo "      missing cache -- just re-qsub it afterwards, the chain is per-run."

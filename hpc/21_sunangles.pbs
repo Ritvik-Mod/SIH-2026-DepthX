@@ -1,0 +1,22 @@
+#!/bin/bash
+#PBS -N dw_sun
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=32gb
+#PBS -l walltime=06:00:00
+#PBS -o logs/sun.out
+#PBS -j oe
+#
+# Recovers per-tile sun elevation/azimuth, which GAMUS does not ship.  Only the shadow
+# ablation (A6) needs this, so it runs as its own job and A1-A5 proceed in parallel.
+#
+# These are ESTIMATES from shadow agreement, not recorded acquisition metadata -- good
+# enough to supervise a soft regulariser weighted 0.05-0.2, and they must be described
+# that way in the writeup.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+python scripts/estimate_sun.py \
+    --root "$DATA_ROOT/GAMUS" \
+    --splits train val \
+    --gsd 0.33 \
+    --device cuda \
+    --out "$DATA_ROOT/GAMUS/sun_angles.json"

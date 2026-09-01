@@ -2,7 +2,7 @@
 #PBS -N dw_prepare
 #PBS -q gpu
 #PBS -l select=1:ncpus=8:ngpus=1:mem=32gb
-#PBS -l walltime=03:00:00
+#PBS -l walltime=02:00:00
 #PBS -o logs/prepare.out
 #PBS -j oe
 source "${PBS_O_WORKDIR}/hpc/_common.sh"
@@ -18,9 +18,8 @@ echo; echo "=== A0 zero-shot baseline (the number that justifies fine-tuning) ==
 python scripts/zero_shot_eval.py --root "$DATA_ROOT/GAMUS" --split val --max-tiles 400 \
     --checkpoint depth-anything/Depth-Anything-V2-Base-hf --out outputs/a0_zeroshot.json
 
-echo; echo "=== sun-angle estimation for the shadow loss (A6) ==="
-python scripts/estimate_sun.py --root "$DATA_ROOT/GAMUS" --splits train val \
-    --gsd 0.33 --out "$DATA_ROOT/GAMUS/sun_angles.json"
+# Sun-angle estimation lives in its own job (21_sunangles.pbs): it is the long pole,
+# and only A6 consumes it, so A1-A5 must not wait behind it.
 
 echo; echo "=== 1-epoch timing probe: recalibrate every estimate from THIS number ==="
 /usr/bin/time -v python -m heightmap.train --config=configs/ablations/a1_regression.yaml \

@@ -5,10 +5,12 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 
-# data and run artefacts — large, regenerable, or downloaded
-data/
-outputs/
-logs/
+# data and run artefacts — large, regenerable, or downloaded.
+# Anchored with a leading slash: a bare `data/` matches at ANY depth and would also
+# ignore the heightmap/data package, which is source code.
+/data/
+/outputs/
+/logs/
 *.pt
 *.pth
 *.h5

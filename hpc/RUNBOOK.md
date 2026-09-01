@@ -56,12 +56,18 @@ Host hpcf
 ```bash
 cd "/Users/ritvikmod/SIH 2026"
 rsync -rtv --delete \
-  --exclude '.venv' --exclude 'data' --exclude 'outputs' --exclude 'logs' \
-  --exclude '__pycache__' --exclude '.git' \
+  --exclude '.venv' --exclude '__pycache__' --exclude '.git' \
+  --exclude '/data' --exclude '/outputs' --exclude '/logs' \
   ./ hpcf:~/SIH2026/
 ```
 
 Code only — the 80 GB dataset is downloaded **on the cluster**, never uploaded from the Mac.
+
+> **The leading slashes matter.** An rsync pattern without one matches at *any* depth, so
+> a bare `--exclude 'data'` also drops the `heightmap/data/` package directory, and the
+> job then dies with `ModuleNotFoundError: No module named 'heightmap.data'`. Anchor the
+> directory excludes with `/`; keep `.venv`, `__pycache__` and `.git` unanchored, since
+> those can legitimately appear at any depth.
 
 ## 2 · Discover before you commit anything
 

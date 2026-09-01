@@ -25,5 +25,12 @@ export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export TOKENIZERS_PARALLELISM=false
 
+# Fail fast on an incomplete upload rather than 40 lines into a traceback.
+for _m in heightmap/data heightmap/models heightmap/losses heightmap/utils; do
+  [ -d "$_m" ] || { echo "FATAL: $_m missing -- the rsync dropped it."; \
+                    echo "  a bare --exclude 'data' also matches heightmap/data; use --exclude '/data'"; \
+                    exit 1; }
+done
+
 echo "host=$(hostname)  job=${PBS_JOBID:-none}  env=$ENV_PREFIX"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || true

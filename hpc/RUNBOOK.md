@@ -16,28 +16,39 @@ PBS Pro cluster. Scheduler commands are `qsub` / `qstat` / `qdel` — **not** Sl
 
 ## 0 · Connect
 
+`172.16.220.100` is RFC1918 private and only routes **on campus or over the college VPN**.
+From anywhere else it just hangs, then fails with `Interrupted system call` or a timeout.
+Off campus, use the external address.
+
 ```bash
-# on campus / VPN
-ssh btech10848.24@172.16.220.100
-# off campus
-ssh btech10848.24@115.240.90.140
+# check which one you can actually reach, before debugging anything else
+nc -z -G 6 172.16.220.100 22 && echo internal OK
+nc -z -G 8 115.240.90.140 22 && echo external OK
+```
+
+```bash
+ssh btech10848.24@115.240.90.140      # off campus  (default)
+ssh btech10848.24@172.16.220.100      # on campus / VPN
 ```
 
 Set up a key so jobs and rsync stop asking for a password:
 
 ```bash
 ssh-keygen -t ed25519 -C sih2026            # if you have no key yet
-ssh-copy-id btech10848.24@172.16.220.100
+ssh-copy-id btech10848.24@115.240.90.140
 ```
 
 Add to `~/.ssh/config` on the Mac so everything below can just say `hpcf`:
 
 ```
 Host hpcf
-    HostName 172.16.220.100
+    HostName 115.240.90.140
     User btech10848.24
     ServerAliveInterval 60
     ServerAliveCountMax 5
+    TCPKeepAlive yes
+
+# on campus, switch HostName to 172.16.220.100 (lower latency, no NAT in the path)
 ```
 
 ## 1 · Push the code
@@ -45,7 +56,8 @@ Host hpcf
 ```bash
 cd "/Users/ritvikmod/SIH 2026"
 rsync -rtv --delete \
-  --exclude '.venv' --exclude 'data' --exclude 'outputs' --exclude '__pycache__' \
+  --exclude '.venv' --exclude 'data' --exclude 'outputs' --exclude 'logs' \
+  --exclude '__pycache__' --exclude '.git' \
   ./ hpcf:~/SIH2026/
 ```
 

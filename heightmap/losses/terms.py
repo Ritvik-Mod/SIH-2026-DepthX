@@ -75,14 +75,24 @@ def multiscale_gradient_loss(pred, gt, mask, scales: int = 4, shift: float = 1.0
 
 def bin_ce_loss(bin_logits, bin_centres, gt, mask):
     """Cross-entropy of the per-pixel bin distribution against the bin nearest the truth.
-    Computed at decoder resolution -- doing it at full res costs memory for no gain."""
+    Computed at decoder resolution -- doing it at full res costs memory for no gain.
+
+    The nearest bin is found with searchsorted rather than argmin over an explicit
+    |gt - centres| tensor.  That tensor is (B, N, h, w): at B=8, N=128, 296x296 it is
+    359 MB allocated, written and reduced on every single step, and it was a measurable
+    part of the fixed per-image overhead.  Bin centres are increasing by construction
+    (cumulative widths), so a binary search over the midpoints gives the identical
+    assignment in O(log N) with no allocation.
+    """
     B, N, h, w = bin_logits.shape
     # bilinear rather than area: MPS cannot do adaptive pooling for non-divisible
     # sizes (518 -> 296), and this runs on the dev machine as well as the GPU box.
     gt_d = F.interpolate(gt, (h, w), mode="bilinear", align_corners=False)
     m_d = F.interpolate(mask.float(), (h, w), mode="bilinear", align_corners=False) > 0.99
-    d = (gt_d.reshape(B, 1, h, w) - bin_centres.reshape(B, N, 1, 1)).abs()
-    target = d.argmin(dim=1)                                   # (B,h,w)
+
+    bounds = (bin_centres[:, 1:] + bin_centres[:, :-1]) * 0.5          # (B, N-1)
+    target = torch.searchsorted(bounds.contiguous(),
+                                gt_d.reshape(B, -1).contiguous()).reshape(B, h, w)
     ce = F.cross_entropy(bin_logits, target, reduction="none").unsqueeze(1)
     return _masked_mean(ce, m_d)
 

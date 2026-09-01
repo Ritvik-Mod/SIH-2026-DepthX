@@ -7,4 +7,4 @@ out_dir: outputs/a6_shadow
 aug: {geometric: false}
 data: {sun_cache: data/GAMUS/sun_angles.json}
 loss: {w_shadow: 0.1}
-train: {epochs: 15, lr_encoder: 3.0e-6, lr_decoder: 1.0e-5, lr_head: 3.0e-5}
+train: {epochs: 40, lr_encoder: 3.0e-6, lr_decoder: 1.0e-5, lr_head: 3.0e-5}

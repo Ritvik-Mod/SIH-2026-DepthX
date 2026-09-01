@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -N dw_train
 #PBS -q gpu
-#PBS -l select=1:ncpus=12:ngpus=1:mem=64gb
+#PBS -l select=1:ncpus=16:ngpus=1:mem=96gb
 #PBS -l walltime=24:00:00
 #PBS -l place=scatter:shared
 #PBS -o logs/train.out
@@ -21,7 +21,7 @@ RUN=$(basename "$CFG" .yaml)
 python -m heightmap.train --config="$CFG" \
     data.root="$DATA_ROOT/GAMUS" \
     data.sun_cache="$DATA_ROOT/GAMUS/sun_angles.json" \
-    data.num_workers=10 \
+    data.num_workers=14 \
     out_dir="outputs/$RUN" \
     train.resume=auto
 

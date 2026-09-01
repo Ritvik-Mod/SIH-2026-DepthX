@@ -5,7 +5,8 @@
 set -euo pipefail
 DATA_ROOT="${1:?usage: 02_fetch_assets.sh <data_root>}"
 ENV_PREFIX="${ENV_PREFIX:-$HOME/envs/depthwizard}"
-source /apps/anaconda3/bin/activate "$ENV_PREFIX"
+source /apps/anaconda3/bin/activate deeplearning
+source "$ENV_PREFIX/bin/activate"
 
 # Keep the HF cache inside the project so it is on the same (large) filesystem as the data
 export HF_HOME="$DATA_ROOT/hf_cache"

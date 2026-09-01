@@ -1,27 +1,39 @@
 #!/bin/bash
-# RUN ON THE LOGIN NODE (it needs internet).  Builds a self-contained conda env so we do
-# not depend on whatever version the shared 'deeplearning' env happens to have.
+# RUN ON THE LOGIN NODE (needs internet).
 #
-#   bash hpc/01_setup_env.sh <CUDA_TAG>       e.g. cu121, cu118, cu124
-# Pick the tag from 00_discover output: it must be <= the driver's CUDA version.
+# The shared 'deeplearning' env already has a working CUDA stack:
+#     python 3.11.13, torch 2.4.1+cu121, cuda avail True, bf16 True,
+#     transformers / h5py / rasterio / cv2 present, only omegaconf missing.
+# So we layer a venv ON TOP of it with --system-site-packages rather than building a
+# fresh conda env.  That reuses the ~3 GB torch install, takes a minute instead of an
+# hour, and still lets us pin/upgrade the few packages we actually care about without
+# writing to an env other students share.
 set -euo pipefail
-CUDA_TAG="${1:?usage: 01_setup_env.sh <cu118|cu121|cu124>}"
 ENV_PREFIX="${ENV_PREFIX:-$HOME/envs/depthwizard}"
 
-source /apps/anaconda3/bin/activate base
-conda create -y -p "$ENV_PREFIX" python=3.11
-source /apps/anaconda3/bin/activate "$ENV_PREFIX"
+source /apps/anaconda3/bin/activate deeplearning
+python -m venv --system-site-packages "$ENV_PREFIX"
+source "$ENV_PREFIX/bin/activate"
 
 python -m pip install --upgrade pip
-python -m pip install torch torchvision --index-url "https://download.pytorch.org/whl/${CUDA_TAG}"
-python -m pip install transformers h5py numpy scipy pillow opencv-python-headless \
-                     rasterio matplotlib omegaconf tqdm imageio huggingface_hub safetensors
+# only what the shared env lacks; torch/cv2/rasterio/h5py are inherited
+python -m pip install omegaconf tqdm imageio
+# transformers must be new enough for DepthAnythingForDepthEstimation's
+# backbone/neck/head split -- 04_probe.pbs is what actually proves it
+python -m pip install --upgrade "transformers>=4.45" safetensors huggingface_hub
 
+echo
 python - <<'PY'
-import torch, transformers
-print("torch", torch.__version__, "cuda build", torch.version.cuda)
-print("env OK -- CUDA availability is only testable on a compute node")
+import torch, transformers, sys
+print("python      ", sys.version.split()[0])
+print("torch       ", torch.__version__, "| cuda build", torch.version.cuda)
+print("transformers", transformers.__version__)
+for m in ("omegaconf","h5py","rasterio","cv2","tqdm","imageio","numpy","scipy"):
+    try:
+        mod=__import__(m); print(f"{m:12s}", getattr(mod,"__version__","ok"))
+    except Exception as e:
+        print(f"{m:12s} MISSING {e}")
 PY
 echo
 echo "env at: $ENV_PREFIX"
-echo "activate with: source /apps/anaconda3/bin/activate $ENV_PREFIX"
+echo "activate: source $ENV_PREFIX/bin/activate"

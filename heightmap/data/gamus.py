@@ -188,8 +188,20 @@ def build_splits(cfg):
         raise ValueError(f"city_holdout removed every tile; holdout={hold}")
     if not ev:
         raise ValueError(f"no tiles for holdout cities {hold}")
-    return tr, {"holdout_val": [t for s in ("val", "train") for t in ev.get(s, [])][:400]}, \
-        {"holdout_test": [t for t in ev.get("test", [])] or [t for s in ev for t in ev[s]]}
+    # Keys MUST be real split directory names.  ConcatSplits builds one GamusDataset per
+    # key and GamusDataset._open reads root/images/<split>/, so a synthetic key like
+    # "holdout_val" resolves to a directory that does not exist.  tr is keyed correctly,
+    # which is why training ran a full epoch and only the first validation pass died.
+    val_ev, budget = {}, 400
+    for s in ("val", "train"):
+        take = ev.get(s, [])[:budget]
+        if take:
+            val_ev[s] = take
+            budget -= len(take)
+        if budget <= 0:
+            break
+    test_ev = {"test": ev["test"]} if ev.get("test") else dict(ev)
+    return tr, val_ev, test_ev
 
 
 class ConcatSplits(torch.utils.data.ConcatDataset):

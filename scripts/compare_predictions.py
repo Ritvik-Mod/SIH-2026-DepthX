@@ -100,7 +100,7 @@ def main():
     ap.add_argument("--per-city", type=int, default=1)
     ap.add_argument("--gsd", type=float, default=0.33)
     ap.add_argument("--out", default="outputs/compare")
-    ap.add_argument("--device", default="auto")
+    ap.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     ap.add_argument("--tta", action="store_true")
     a = ap.parse_args()
 
@@ -108,7 +108,7 @@ def main():
         print("WARNING: train tiles were used to fit these weights. The comparison will\n"
               "         flatter the model. Use --split val or test for an honest look.\n")
     os.makedirs(a.out, exist_ok=True)
-    dev = pick_device(a.device)
+    dev = pick_device() if a.device == "auto" else torch.device(a.device)
     model, cfg = load_model(a.ckpt, dev)
     print(f"device {dev}   backbone {cfg.model.checkpoint.split('/')[-1]}   head {cfg.model.head}")
 

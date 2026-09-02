@@ -49,6 +49,38 @@ def stats(pred, gt, mask):
     return dict(n=int(p.size), mae=float(np.abs(d).mean()), bias=float(d.mean()), r=r)
 
 
+def composite_rank(rows):
+    """Average rank across six criteria rather than one.
+
+    Sorting on building MAE alone rewards a tile that is uniformly a little wrong over
+    one that is mostly exact with a few bad pixels, and says nothing about whether the
+    SHAPE is right -- which is what downstream persistence and rendering actually
+    consume.  Ranks are used instead of raw values because the criteria have
+    incompatible units and wildly different spreads; averaging z-scores would let one
+    heavy-tailed metric dominate.  Lower is better.
+    """
+    n = len(rows)
+    def rk(vals, ascending):
+        v = np.asarray(vals, float)
+        v = np.where(np.isfinite(v), v, np.inf if ascending else -np.inf)
+        return np.argsort(np.argsort(v if ascending else -v)).astype(float)
+    parts = {
+        "building MAE":  rk([d["bmae"] for d in rows], True),
+        "building r":    rk([d["br"] for d in rows], False),
+        "|building bias|": rk([abs(d["bbias"]) if np.isfinite(d["bbias"]) else np.nan
+                               for d in rows], True),
+        "overall MAE":   rk([d["omae"] for d in rows], True),
+        "overall r":     rk([d["orr"] for d in rows], False),
+        "|overall bias|": rk([abs(d["obias"]) if np.isfinite(d["obias"]) else np.nan
+                              for d in rows], True),
+    }
+    total = np.mean(list(parts.values()), axis=0)
+    for i, d in enumerate(rows):
+        d["composite"] = float(total[i])
+        d["ranks"] = {k: int(v[i]) + 1 for k, v in parts.items()}
+    return rows
+
+
 def render(tid, rgb, gt, pred, cls, gsd, out_path, split, label=""):
     finite = np.isfinite(gt)
     valid = finite & (gt > -100.0)
@@ -108,6 +140,9 @@ def main():
                     help="selection floor: fraction of pixels labelled building.  Without "
                          "one, 'best by building MAE' picks the emptiest tiles in the pool, "
                          "because a tile with nothing built on it has nothing to get wrong.")
+    ap.add_argument("--rank", default="composite", choices=["composite", "bmae"],
+                    help="composite = mean rank over building MAE/r/|bias| and overall "
+                         "MAE/r/|bias|.  bmae = building MAE alone.")
     ap.add_argument("--min-p99", type=float, default=0.0,
                     help="selection floor: 99th percentile of TRUE height, metres. Keeps "
                          "tiles that actually contain tall structure.")
@@ -172,7 +207,9 @@ def main():
         finite = np.isfinite(gt) & (gt > -100.0)
         bmask = finite & (cls == BUILDING)
         st = stats(pred, gt, bmask)
-        scored.append(dict(city=city, tid=tid, bmae=st["mae"], br=st["r"],
+        ov = stats(pred, gt, finite)
+        scored.append(dict(city=city, tid=tid, bmae=st["mae"], br=st["r"], bbias=st["bias"],
+                           omae=ov["mae"], orr=ov["r"], obias=ov["bias"],
                            bfrac=float(bmask.mean()),
                            p99=float(np.percentile(gt[finite], 99)) if finite.any() else 0.0))
         if k % 20 == 0 or k <= 3:
@@ -189,8 +226,19 @@ def main():
                   f"AND true p99 >= {a.min_p99:.0f} m  ->  {len(ok)} of {n_all} tiles eligible")
             if not ok:
                 sys.exit("no tile clears the content floor; lower --min-building-frac/--min-p99")
-        ok.sort(key=lambda d: d["bmae"])
+        if a.rank == "composite":
+            composite_rank(ok)
+            ok.sort(key=lambda d: d["composite"])
+        else:
+            ok.sort(key=lambda d: d["bmae"])
         picked = [(d, f" · BEST of {len(ok)} scanned") for d in ok[:a.best]]
+        if a.rank == "composite" and picked:
+            print("\nranked by mean rank over 6 criteria (1 = best in pool):")
+            print(f"  {'tile':16s} {'compo':>6s}  " +
+                  "  ".join(f"{k:>15s}" for k in picked[0][0]["ranks"]))
+            for d, _ in picked:
+                print(f"  {d['tid']:16s} {d['composite']:6.1f}  " +
+                      "  ".join(f"{d['ranks'][k]:>15d}" for k in d["ranks"]))
         rest = ok[a.best:]
         rng = np.random.default_rng(a.seed)
         idx = rng.permutation(len(rest))[:a.random]

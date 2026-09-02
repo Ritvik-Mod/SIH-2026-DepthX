@@ -2,7 +2,7 @@
 #PBS -N dw_demo12
 #PBS -q gpu
 #PBS -l select=1:ncpus=8:ngpus=1:mem=64gb
-#PBS -l walltime=02:00:00
+#PBS -l walltime=06:00:00
 #PBS -o logs/demo12.out
 #PBS -j oe
 #
@@ -29,6 +29,7 @@ source "${PBS_O_WORKDIR}/hpc/_common.sh"
 # model's overall building r of 0.908.
 : "${MINBF:=0.10}"
 : "${MINP99:=15}"
+: "${RANK:=composite}"
 
 python scripts/compare_predictions.py \
     --ckpt "$CKPT" \
@@ -38,5 +39,6 @@ python scripts/compare_predictions.py \
     --best "$BEST" \
     --min-building-frac "$MINBF" \
     --min-p99 "$MINP99" \
+    --rank "$RANK" \
     --out "outputs/demo12_${SPLIT}" \
     --device cuda

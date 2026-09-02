@@ -49,7 +49,7 @@ def stats(pred, gt, mask):
     return dict(n=int(p.size), mae=float(np.abs(d).mean()), bias=float(d.mean()), r=r)
 
 
-def render(tid, rgb, gt, pred, cls, gsd, out_path, split):
+def render(tid, rgb, gt, pred, cls, gsd, out_path, split, label=""):
     finite = np.isfinite(gt)
     valid = finite & (gt > -100.0)
     bld = valid & (cls == BUILDING)
@@ -76,7 +76,7 @@ def render(tid, rgb, gt, pred, cls, gsd, out_path, split):
     for a in ax:
         a.set_xticks([]); a.set_yticks([])
 
-    sub = (f"{tid}  ·  split={split}  ·  {gt.shape[1]}×{gt.shape[0]} px at {gsd} m/px\n"
+    sub = (f"{tid}  ·  split={split}{label}  ·  {gt.shape[1]}×{gt.shape[0]} px at {gsd} m/px\n"
            f"ALL pixels   MAE {ov['mae']:.2f} m   bias {ov['bias']:+.2f} m   r {ov['r']:.3f}"
            f"        BUILDINGS   MAE {bs['mae']:.2f} m   bias {bs['bias']:+.2f} m   r {bs['r']:.3f}"
            f"   ({100*bs['n']/max(ov['n'],1):.1f}% of pixels)\n"
@@ -86,7 +86,7 @@ def render(tid, rgb, gt, pred, cls, gsd, out_path, split):
     fig.tight_layout(rect=[0, 0, 1, 0.94]); fig.subplots_adjust(top=0.78, wspace=0.06)
     fig.savefig(out_path, dpi=105, bbox_inches="tight", facecolor="white")
     plt.close(fig)
-    return dict(tile=tid, overall=ov, building=bs,
+    return dict(tile=tid, label=label.strip(' ·'), overall=ov, building=bs,
                 truth_p50=float(np.percentile(gt[valid], 50)),
                 pred_p50=float(np.percentile(pred[valid], 50)))
 
@@ -98,6 +98,12 @@ def main():
     ap.add_argument("--split", default="val", choices=["train", "val", "test"])
     ap.add_argument("--tiles", nargs="*", default=[])
     ap.add_argument("--per-city", type=int, default=1)
+    ap.add_argument("--scan", type=int, default=0,
+                    help="score this many tiles (spread across cities), then pick from them "
+                         "with --best/--random.  Overrides --per-city.")
+    ap.add_argument("--best", type=int, default=0, help="render the N best by building MAE")
+    ap.add_argument("--random", type=int, default=0, help="render N drawn at random from the rest")
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--gsd", type=float, default=0.33)
     ap.add_argument("--out", default="outputs/compare")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
@@ -121,7 +127,23 @@ def main():
             by.setdefault(city, []).append(tid)
         chosen = [(c, t) for c in sorted(by) for t in by[c][:a.per_city]]
 
-    rows = []
+    if a.scan:
+        by = {}
+        for city, tid in tiles:
+            by.setdefault(city, []).append(tid)
+        # round-robin across cities so the pool is not one city's flight line
+        pool, i = [], 0
+        while len(pool) < a.scan:
+            added = False
+            for c in sorted(by):
+                if i < len(by[c]) and len(pool) < a.scan:
+                    pool.append((c, by[c][i])); added = True
+            if not added:
+                break
+            i += 1
+        chosen = pool
+
+    scored = []
     for city, tid in chosen:
         rgb, gt, cls = load_tile(a.root, a.split, tid)
         if rgb is None:
@@ -129,13 +151,38 @@ def main():
         res = predict_scene(model, rgb, a.gsd, tile=int(cfg.data.crop),
                             overlap=float(cfg.infer.overlap), batch=4,
                             tta=a.tta, device=dev, progress=False)
-        out = os.path.join(a.out, f"{tid}_compare.png")
-        rows.append(render(tid, rgb, gt, res.agl, cls, a.gsd, out, a.split))
+        finite = np.isfinite(gt) & (gt > -100.0)
+        bm = stats(res.agl, gt, finite & (cls == BUILDING))["mae"]
+        scored.append(dict(city=city, tid=tid, rgb=rgb, gt=gt, cls=cls, pred=res.agl, bmae=bm))
+        print(f"  scored {tid:14s} building MAE {bm:.3f}")
+
+    if a.best or a.random:
+        ok = [s_ for s_ in scored if np.isfinite(s_["bmae"])]
+        ok.sort(key=lambda d: d["bmae"])
+        picked = [(d, f" · BEST of {len(ok)} scanned") for d in ok[:a.best]]
+        rest = ok[a.best:]
+        rng = np.random.default_rng(a.seed)
+        idx = rng.permutation(len(rest))[:a.random]
+        picked += [(rest[int(j)], " · randomly selected") for j in sorted(idx)]
+    else:
+        picked = [(d, "") for d in scored]
+
+    rows = []
+    for d, label in picked:
+        tag = "best" if "BEST" in label else ("random" if "random" in label else "sel")
+        out = os.path.join(a.out, f"{d['tid']}_{tag}_compare.png")
+        rows.append(render(d["tid"], d["rgb"], d["gt"], d["pred"], d["cls"],
+                           a.gsd, out, a.split, label))
         r = rows[-1]
-        print(f"{tid:14s} all MAE {r['overall']['mae']:.2f} bias {r['overall']['bias']:+.2f} "
+        print(f"{d['tid']:14s} all MAE {r['overall']['mae']:.2f} bias {r['overall']['bias']:+.2f} "
               f"r {r['overall']['r']:.3f} | bldg MAE {r['building']['mae']:.2f} "
               f"bias {r['building']['bias']:+.2f} r {r['building']['r']:.3f} "
               f"| p50 truth {r['truth_p50']:.2f} pred {r['pred_p50']:.2f}  -> {out}")
+
+    if scored:
+        allb = [s_["bmae"] for s_ in scored if np.isfinite(s_["bmae"])]
+        print(f"\npool of {len(allb)} scanned tiles: building MAE "
+              f"min {min(allb):.3f}  median {float(np.median(allb)):.3f}  max {max(allb):.3f}")
 
     if rows:
         m = np.mean([r["building"]["mae"] for r in rows])

@@ -22,6 +22,15 @@ from .metrics import MetricAccumulator, format_table, sharpness
 from .utils.misc import seed_everything, pick_device, amp_dtype_for, JsonlLogger, EMA, warmup_cosine
 from .utils.viz import panel
 
+# DataLoader workers hand tensors to the main process as file descriptors under the
+# default 'file_descriptor' sharing strategy, and the main process's fd budget is
+# finite.  With 14 workers over a 6,557-tile split that ceiling was hit at epoch 23,
+# identically in two separate runs -- OSError: [Errno 24] Too many open files.  The
+# 'file_system' strategy passes shared-memory names instead and does not consume an fd
+# per tensor.  The official-split runs survived only because the ladder ran one job at
+# a time; three concurrent jobs is what exposed it.
+torch.multiprocessing.set_sharing_strategy("file_system")
+
 
 def make_loaders(cfg):
     tr, va, te = build_splits(cfg)

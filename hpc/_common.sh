@@ -36,6 +36,13 @@ export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export TOKENIZERS_PARALLELISM=false
 
+# DataLoader hands tensors between processes using file descriptors, and two holdout
+# runs died at epoch 23 with "Too many open files" when three jobs shared this node.
+# train.py switches to the file_system strategy; raise the ceiling as well, since the
+# default soft limit here is low and h5py holds a handle per open tile.
+ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
+echo "open-file limit: soft=$(ulimit -Sn) hard=$(ulimit -Hn)"
+
 # Fail fast on an incomplete upload rather than 40 lines into a traceback.
 for _m in heightmap/data heightmap/models heightmap/losses heightmap/utils; do
   [ -d "$_m" ] || { echo "FATAL: $_m missing -- the rsync dropped it."; \

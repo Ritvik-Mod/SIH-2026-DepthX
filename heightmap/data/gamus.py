@@ -83,13 +83,26 @@ class GamusDataset(Dataset):
     def __len__(self):
         return len(self.tiles)
 
+    #: Open h5 handles kept per worker.  Workers are persistent (train.py sets
+    #: persistent_workers=True), so an unbounded cache grows for the life of the RUN,
+    #: not the epoch: with 6,557 tiles x 3 files that is ~19,700 open files per worker
+    #: and the process dies on errno 24.  The official split's 5,004 tiles sat just
+    #: under the ceiling, which is why only the city-holdout runs crashed -- at epoch 23
+    #: before the sharing-strategy fix and epoch 56 after it.  A tile is read once per
+    #: epoch, so the cache only ever saves a reopen within a batch; a small bound costs
+    #: nothing and removes the ceiling entirely.
+    MAX_OPEN = 192
+
     def _open(self, sub: str, tile_id: str, kinds):
         """kinds may hold several candidate suffixes (see IMAGE_KINDS)."""
         import h5py
         if self._h is None:
-            self._h = {}
+            from collections import OrderedDict
+            self._h = OrderedDict()
         key = (sub, tile_id)
-        if key not in self._h:
+        if key in self._h:
+            self._h.move_to_end(key)
+        else:
             base = self.root / sub / self.split
             for kind in ((kinds,) if isinstance(kinds, str) else kinds):
                 f = base / f"{tile_id}_{kind}.h5"
@@ -99,6 +112,12 @@ class GamusDataset(Dataset):
             else:
                 raise FileNotFoundError(
                     f"{tile_id}: none of {kinds} found under {base}")
+            while len(self._h) > self.MAX_OPEN:
+                _k, fh = self._h.popitem(last=False)     # evict least recently used
+                try:
+                    fh.close()
+                except Exception:
+                    pass
         return self._h[key]
 
     @staticmethod

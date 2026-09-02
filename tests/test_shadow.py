@@ -47,6 +47,14 @@ def main():
     tids = [t for t in sun if os.path.exists(f"{ROOT}/images/train/{t}_RGB.h5")
             and sun[t][0] < CFG.max_sun_elev][:3]
     assert tids, "no usable synthetic tiles"
+    # The azimuth-error threshold below is calibrated for 1024 px fixtures.  On smaller
+    # tiles, buildings outside the 512 px crop no longer cast shadows into it, the
+    # azimuth signal weakens, and case 2 fails in a way that reads like a sign-convention
+    # bug rather than a fixture problem.  Fail here instead, with the actual reason.
+    _, _probe = load(tids[0])
+    assert _probe.shape[0] >= 1024, (
+        f"synthetic tiles are {_probe.shape[0]} px; this test needs >= 1024.\n"
+        f"  regenerate: python scripts/make_synthetic.py --root {ROOT} --per-split 8 --size 1024")
     print(f"{len(tids)} tiles below the {CFG.max_sun_elev:.0f} deg sun-elevation guard\n")
 
     print("1) rendered occlusion vs independent reimplementation")

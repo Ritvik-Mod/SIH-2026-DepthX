@@ -137,6 +137,19 @@ def shadow_consistency_loss(height, image01, gsd, sun, cfg_shadow, exclude=None)
     valid = reliable
     if exclude is not None:
         valid = valid & (~exclude[idx])
-    bce = F.binary_cross_entropy(soft.clamp(1e-6, 1 - 1e-6), obs, reduction="none")
+    # binary_cross_entropy is BLOCKED under autocast -- torch raises rather than
+    # silently producing bad numbers, because sigmoid+BCE can overflow in reduced
+    # precision.  Training runs under bf16 autocast (train.amp_dtype), so this must run
+    # in fp32 explicitly.  It was never caught because the tests run in fp32.
+    #
+    # Deliberately NOT switched to binary_cross_entropy_with_logits.  That would be the
+    # textbook fix, but occ carries a -1e4 sentinel and can be legitimately large and
+    # negative, so an unclamped logit form changes the loss magnitude on
+    # confidently-unshadowed pixels.  The clamped probability form is the one that was
+    # validated (occlusion IoU 0.91-0.93) and that w_shadow=0.1 was chosen against, so
+    # the numerics are preserved exactly and only the precision is forced.
+    with torch.autocast(device_type=height.device.type, enabled=False):
+        bce = F.binary_cross_entropy(soft.float().clamp(1e-6, 1 - 1e-6),
+                                     obs.float().clamp(0.0, 1.0), reduction="none")
     m = valid.to(bce.dtype)
     return (bce * m).sum() / m.sum().clamp(min=1.0)

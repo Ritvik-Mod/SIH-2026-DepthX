@@ -100,6 +100,25 @@ def main():
     gn = float(h.grad.abs().sum())
     print(f"   loss={float(loss):.4f}  sum|dL/dH|={gn:.4f}")
     assert gn > 0, "no gradient reaches the height field"
+    print("\n5) loss survives bf16 autocast, the precision training actually uses")
+    # A6 crashed here after a full A5 warm start: binary_cross_entropy is unsafe to
+    # autocast and torch refuses it.  Every other test runs in fp32, so nothing covered
+    # the path the trainer takes.
+    for dev, dt in (("cuda", torch.bfloat16), ("cpu", torch.bfloat16)):
+        if dev == "cuda" and not torch.cuda.is_available():
+            print("   cuda unavailable, skipping"); continue
+        _, agl = load(tids[0]); elev, azim = sun[tids[0]]
+        rgb, _ = load(tids[0])
+        h = torch.from_numpy(agl).float()[None, None].to(dev).requires_grad_(True)
+        im = torch.from_numpy(rgb).float().permute(2, 0, 1)[None].to(dev) / 255.0
+        with torch.autocast(device_type=dev, dtype=dt):
+            l = shadow_consistency_loss(h, im, torch.tensor([0.5], device=dev),
+                                        torch.tensor([[elev, azim]], device=dev), CFG)
+        l.backward()
+        assert torch.isfinite(l), f"{dev}/{dt}: loss is not finite under autocast"
+        assert float(h.grad.abs().sum()) > 0, f"{dev}/{dt}: no gradient under autocast"
+        print(f"   {dev}/{str(dt).split('.')[-1]:9s} loss={float(l):.4f}  finite, gradient flows")
+
     print("\nPASS test_shadow")
 
 

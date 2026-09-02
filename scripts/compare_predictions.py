@@ -104,6 +104,13 @@ def main():
     ap.add_argument("--best", type=int, default=0, help="render the N best by building MAE")
     ap.add_argument("--random", type=int, default=0, help="render N drawn at random from the rest")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--min-building-frac", type=float, default=0.0,
+                    help="selection floor: fraction of pixels labelled building.  Without "
+                         "one, 'best by building MAE' picks the emptiest tiles in the pool, "
+                         "because a tile with nothing built on it has nothing to get wrong.")
+    ap.add_argument("--min-p99", type=float, default=0.0,
+                    help="selection floor: 99th percentile of TRUE height, metres. Keeps "
+                         "tiles that actually contain tall structure.")
     ap.add_argument("--gsd", type=float, default=0.33)
     ap.add_argument("--out", default="outputs/compare")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
@@ -163,13 +170,25 @@ def main():
             print(f"  skip {tid}: no image"); continue
         rgb, gt, cls, pred = got
         finite = np.isfinite(gt) & (gt > -100.0)
-        bm = stats(pred, gt, finite & (cls == BUILDING))["mae"]
-        scored.append(dict(city=city, tid=tid, bmae=bm))
-        if k % 10 == 0 or k <= 3:
-            print(f"  scored {k}/{len(chosen)}  {tid:14s} building MAE {bm:.3f}", flush=True)
+        bmask = finite & (cls == BUILDING)
+        st = stats(pred, gt, bmask)
+        scored.append(dict(city=city, tid=tid, bmae=st["mae"], br=st["r"],
+                           bfrac=float(bmask.mean()),
+                           p99=float(np.percentile(gt[finite], 99)) if finite.any() else 0.0))
+        if k % 20 == 0 or k <= 3:
+            d = scored[-1]
+            print(f"  scored {k}/{len(chosen)}  {tid:14s} bMAE {d['bmae']:.3f} "
+                  f"bldg {100*d['bfrac']:.1f}%  p99 {d['p99']:.1f} m", flush=True)
 
     if a.best or a.random:
         ok = [s_ for s_ in scored if np.isfinite(s_["bmae"])]
+        n_all = len(ok)
+        ok = [d for d in ok if d["bfrac"] >= a.min_building_frac and d["p99"] >= a.min_p99]
+        if a.min_building_frac or a.min_p99:
+            print(f"\ncontent floor: building >= {100*a.min_building_frac:.0f}% of pixels "
+                  f"AND true p99 >= {a.min_p99:.0f} m  ->  {len(ok)} of {n_all} tiles eligible")
+            if not ok:
+                sys.exit("no tile clears the content floor; lower --min-building-frac/--min-p99")
         ok.sort(key=lambda d: d["bmae"])
         picked = [(d, f" · BEST of {len(ok)} scanned") for d in ok[:a.best]]
         rest = ok[a.best:]
@@ -199,6 +218,12 @@ def main():
         allb = [s_["bmae"] for s_ in scored if np.isfinite(s_["bmae"])]
         print(f"\npool of {len(allb)} scanned tiles: building MAE "
               f"min {min(allb):.3f}  median {float(np.median(allb)):.3f}  max {max(allb):.3f}")
+        eligible = [s_ for s_ in scored if np.isfinite(s_["bmae"])
+                    and s_["bfrac"] >= a.min_building_frac and s_["p99"] >= a.min_p99]
+        if eligible and (a.min_building_frac or a.min_p99):
+            e = [d["bmae"] for d in eligible]
+            print(f"  of the {len(eligible)} clearing the content floor: building MAE "
+                  f"min {min(e):.3f}  median {float(np.median(e)):.3f}  max {max(e):.3f}")
 
     if rows:
         m = np.mean([r["building"]["mae"] for r in rows])

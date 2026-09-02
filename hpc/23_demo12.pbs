@@ -15,6 +15,12 @@ source "${PBS_O_WORKDIR}/hpc/_common.sh"
 : "${CKPT:=outputs/a7_vitl/best.pt}"
 : "${SCAN:=400}"
 : "${BEST:=12}"
+# Content floor.  Without it, "best by building MAE" returns the emptiest tiles in the
+# pool -- a flat field has nothing to get wrong.  The first run of this job selected
+# twelve PHL tiles with true p50 of 0.01 m and building r as low as 0.511, against the
+# model's overall building r of 0.908.
+: "${MINBF:=0.10}"
+: "${MINP99:=15}"
 
 python scripts/compare_predictions.py \
     --ckpt "$CKPT" \
@@ -22,5 +28,7 @@ python scripts/compare_predictions.py \
     --split val \
     --scan "$SCAN" \
     --best "$BEST" \
+    --min-building-frac "$MINBF" \
+    --min-p99 "$MINP99" \
     --out outputs/demo12 \
     --device cuda

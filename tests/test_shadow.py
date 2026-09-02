@@ -51,9 +51,11 @@ def main():
     # tiles, buildings outside the 512 px crop no longer cast shadows into it, the
     # azimuth signal weakens, and case 2 fails in a way that reads like a sign-convention
     # bug rather than a fixture problem.  Fail here instead, with the actual reason.
-    _, _probe = load(tids[0])
-    assert _probe.shape[0] >= 1024, (
-        f"synthetic tiles are {_probe.shape[0]} px; this test needs >= 1024.\n"
+    # Read the file shape, NOT load()'s output -- load centre-crops to 512 regardless.
+    with h5py.File(f"{ROOT}/heights/train/{tids[0]}_AGL.h5") as _f:
+        _src = _f["image"].shape[0]
+    assert _src >= 1024, (
+        f"synthetic tiles are {_src} px; this test needs >= 1024.\n"
         f"  regenerate: python scripts/make_synthetic.py --root {ROOT} --per-split 8 --size 1024")
     print(f"{len(tids)} tiles below the {CFG.max_sun_elev:.0f} deg sun-elevation guard\n")
 

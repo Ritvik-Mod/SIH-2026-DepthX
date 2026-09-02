@@ -370,9 +370,5 @@ held-out-city number, not the in-domain one.
 
 Four-part handbook written for Ritvik during this project (foundations → architecture →
 data/losses/training → inference/eval/handoff):
-- https://claude.ai/code/artifact/5f23c5d7-f2b6-4e2d-ad01-e0d299142ac1
-- https://claude.ai/code/artifact/caedfcb2-016a-4666-98c4-2ca34469ebd0
-- https://claude.ai/code/artifact/29fa142e-4bde-402c-878f-9f71ceafdf14
-- https://claude.ai/code/artifact/fad9454a-1e3a-477c-bc78-defe46d30b04
 
 `hpc/RUNBOOK.md` has the cluster procedure. `SPEC.md` has the output contract.

@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -N dw_demo12
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=64gb
+#PBS -l walltime=02:00:00
+#PBS -o logs/demo12.out
+#PBS -j oe
+#
+# Scores the whole val split with the best checkpoint and renders the top N as
+# predict-vs-truth panels for the demo.  Each figure is stamped "BEST of <pool>
+# scanned" and the pool's min/median/max building MAE is printed, so the curated set
+# cannot be mistaken for typical performance.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+: "${CKPT:=outputs/a7_vitl/best.pt}"
+: "${SCAN:=400}"
+: "${BEST:=12}"
+
+python scripts/compare_predictions.py \
+    --ckpt "$CKPT" \
+    --root "$DATA_ROOT/GAMUS" \
+    --split val \
+    --scan "$SCAN" \
+    --best "$BEST" \
+    --out outputs/demo12 \
+    --device cuda

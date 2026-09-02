@@ -108,6 +108,7 @@ def main():
     ap.add_argument("--out", default="outputs/compare")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     ap.add_argument("--tta", action="store_true")
+    ap.add_argument("--batch", type=int, default=8)
     a = ap.parse_args()
 
     if a.split == "train":
@@ -143,18 +144,29 @@ def main():
             i += 1
         chosen = pool
 
-    scored = []
-    for city, tid in chosen:
+    def infer(tid):
         rgb, gt, cls = load_tile(a.root, a.split, tid)
         if rgb is None:
-            print(f"skip {tid}: no image"); continue
+            return None
         res = predict_scene(model, rgb, a.gsd, tile=int(cfg.data.crop),
-                            overlap=float(cfg.infer.overlap), batch=4,
+                            overlap=float(cfg.infer.overlap), batch=a.batch,
                             tta=a.tta, device=dev, progress=False)
+        return rgb, gt, cls, res.agl
+
+    # Score pass keeps only the number, not the arrays: at 1024^2 a scanned tile costs
+    # ~19 MB of rgb+gt+cls+pred, so holding the whole 859-tile val split would need
+    # ~16 GB.  The dozen that get rendered are re-inferred afterwards, which is seconds.
+    scored = []
+    for k, (city, tid) in enumerate(chosen, 1):
+        got = infer(tid)
+        if got is None:
+            print(f"  skip {tid}: no image"); continue
+        rgb, gt, cls, pred = got
         finite = np.isfinite(gt) & (gt > -100.0)
-        bm = stats(res.agl, gt, finite & (cls == BUILDING))["mae"]
-        scored.append(dict(city=city, tid=tid, rgb=rgb, gt=gt, cls=cls, pred=res.agl, bmae=bm))
-        print(f"  scored {tid:14s} building MAE {bm:.3f}")
+        bm = stats(pred, gt, finite & (cls == BUILDING))["mae"]
+        scored.append(dict(city=city, tid=tid, bmae=bm))
+        if k % 10 == 0 or k <= 3:
+            print(f"  scored {k}/{len(chosen)}  {tid:14s} building MAE {bm:.3f}", flush=True)
 
     if a.best or a.random:
         ok = [s_ for s_ in scored if np.isfinite(s_["bmae"])]
@@ -168,11 +180,15 @@ def main():
         picked = [(d, "") for d in scored]
 
     rows = []
-    for d, label in picked:
+    for rank, (d, label) in enumerate(picked, 1):
+        got = infer(d["tid"])                      # re-infer only what gets rendered
+        if got is None:
+            continue
+        rgb, gt, cls, pred = got
         tag = "best" if "BEST" in label else ("random" if "random" in label else "sel")
-        out = os.path.join(a.out, f"{d['tid']}_{tag}_compare.png")
-        rows.append(render(d["tid"], d["rgb"], d["gt"], d["pred"], d["cls"],
-                           a.gsd, out, a.split, label))
+        pfx = f"{rank:02d}_" if tag == "best" else ""
+        out = os.path.join(a.out, f"{pfx}{d['tid']}_{tag}_compare.png")
+        rows.append(render(d["tid"], rgb, gt, pred, cls, a.gsd, out, a.split, label))
         r = rows[-1]
         print(f"{d['tid']:14s} all MAE {r['overall']['mae']:.2f} bias {r['overall']['bias']:+.2f} "
               f"r {r['overall']['r']:.3f} | bldg MAE {r['building']['mae']:.2f} "

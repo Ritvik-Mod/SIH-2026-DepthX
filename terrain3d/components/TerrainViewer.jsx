@@ -39,7 +39,12 @@ export default function TerrainViewer({ dataset, onReset }) {
   const [sunEl, setSunEl] = useState(45);
   const [busy, setBusy] = useState(true);
   const [work, setWork] = useState(null);
-  const [hud, setHud] = useState({ fps: 0, alt: 0, ground: 0, x: 0, z: 0, trees: 0 });
+  const [hud, setHud] = useState({
+    fps: 0, alt: 0, ground: 0, x: 0, z: 0, trees: 0,
+    speed: 0, agl: 0, moveMode: 'fly', grounded: false, locked: false,
+  });
+  // mirrors FlyController.mode so the panel can drive it without a re-init
+  const [moveMode, setMoveMode] = useState('fly');
 
   // ------------------------------------------------------- opt-in features
   // Nothing below is active unless switched on, and every one is display-only:
@@ -90,8 +95,21 @@ export default function TerrainViewer({ dataset, onReset }) {
     orbit.target.set(0, max * 0.3, 0);
     orbit.maxDistance = Math.max(extentX, extentZ) * 3;
 
-    const fly = new FlyController(camera, renderer.domElement);
-    fly.speed = Math.max(18, extentX / 12);
+    // The controller needs a floor. `getGroundHeight` is attached just below,
+    // once sampleGround exists -- it reads the RENDERED surface (canopy levelling
+    // and mesh.scale.y included), so collision always matches what is on screen.
+    // Bounds are the tile plus a margin: flying off into empty fog and losing the
+    // scene entirely is a worse failure than being gently stopped.
+    const margin = Math.max(extentX, extentZ) * 0.35;
+    const fly = new FlyController(camera, renderer.domElement, {
+      bounds: {
+        minX: -extentX / 2 - margin, maxX: extentX / 2 + margin,
+        minZ: -extentZ / 2 - margin, maxZ: extentZ / 2 + margin,
+      },
+      maxAltitude: Math.max(600, max * 6 + Math.max(extentX, extentZ) * 1.5),
+    });
+    fly.baseSpeed = Math.max(12, extentX / 18);
+    fly.onModeChange = (m) => setMoveMode(m);
 
     // the satellite texture already contains baked illumination, so ambient is
     // generous and the directional light exists mainly to cast shadows
@@ -109,9 +127,13 @@ export default function TerrainViewer({ dataset, onReset }) {
     scene.add(sun.target);
 
     const plinthH = Math.max(12, max * 0.5);
+    // DoubleSide matters: if anything ever does put the camera inside this box,
+    // single-sided walls disappear and the user is left in featureless fog with
+    // no way to tell which way is up. With both sides drawn they at least see a
+    // dark room and can hit R to recover.
     const plinth = new THREE.Mesh(
       new THREE.BoxGeometry(extentX, plinthH, extentZ),
-      new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 1 })
+      new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 1, side: THREE.DoubleSide })
     );
     plinth.position.y = -plinthH / 2 - 0.05;
     scene.add(plinth);
@@ -176,6 +198,11 @@ export default function TerrainViewer({ dataset, onReset }) {
       }
       return h * world.mesh.scale.y;
     };
+
+    // THE FIX for falling through the terrain: give the controller a real floor.
+    // sampleGround already accounts for mound levelling and the vertical
+    // exaggeration, so the collision surface can never drift from the drawn one.
+    fly.getGroundHeight = sampleGround;
 
     // Instanced forests bake their transforms, so any change to the vertical
     // exaggeration -- slider or reveal animation -- must re-seat them or they
@@ -250,13 +277,19 @@ export default function TerrainViewer({ dataset, onReset }) {
       world.frames++;
       world.fpsClock += dt;
       if (world.fpsClock > 0.4) {
+        const g = sampleGround(camera.position.x, camera.position.z);
         setHud({
           fps: Math.round(world.frames / world.fpsClock),
           alt: camera.position.y,
-          ground: sampleGround(camera.position.x, camera.position.z),
+          ground: g,
+          agl: camera.position.y - g,
           x: camera.position.x,
           z: camera.position.z,
           trees: world.treeCount,
+          speed: world.fly.enabled ? world.fly.currentSpeed : 0,
+          moveMode: world.fly.mode,
+          grounded: world.fly.grounded,
+          locked: world.fly.locked,
         });
         world.frames = 0;
         world.fpsClock = 0;
@@ -477,10 +510,18 @@ export default function TerrainViewer({ dataset, onReset }) {
   useEffect(() => {
     const world = worldRef.current;
     if (!world) return;
-    const flying = mode === 'fly';
+    const flying = mode === 'fly' || mode === 'walk';
     world.orbit.enabled = !flying;
+    if (flying) world.fly.setMode(mode === 'walk' ? 'walk' : 'fly');
     world.fly.setEnabled(flying);
   }, [mode]);
+
+  // F toggles fly/walk from inside pointer lock; keep the panel in step with it
+  useEffect(() => {
+    if (mode !== 'fly' && mode !== 'walk') return;
+    if (moveMode !== mode) setMode(moveMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moveMode]);
 
   const replay = useCallback(() => {
     const world = worldRef.current;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { classifyFiles, loadHeightmap, loadMetadata, loadTextureBitmap, resolvePixelSpacing } from '@/lib/load';
+import { classifyFiles, loadHeightmap, loadMetadata, loadTextureBitmap, resolvePixelSpacing, sanityWarnings } from '@/lib/load';
 
 export default function UploadPanel({ onReady }) {
   const inputRef = useRef(null);
@@ -10,6 +10,7 @@ export default function UploadPanel({ onReady }) {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [warnings, setWarnings] = useState([]);
 
   const accept = useCallback(async (fileList) => {
     setError('');
@@ -37,9 +38,15 @@ export default function UploadPanel({ onReady }) {
       const hm = await loadHeightmap(picked.heightmap, setStatus);
       const bitmap = await loadTextureBitmap(picked.texture, setStatus);
 
-      if (bitmap.width !== hm.width || bitmap.height !== hm.height) {
-        setStatus(`Note: texture is ${bitmap.width}x${bitmap.height}, raster is ${hm.width}x${hm.height} — UVs still stretch to fit.`);
+      // Prefer the GeoTIFF's own pixel scale when it carries one: it is the
+      // file's ground truth, whereas the sidecar and the manual field are both
+      // things a human can get wrong.
+      const effSpacing = hm.geoSpacing ?? spacing;
+      if (hm.geoSpacing && Math.abs(hm.geoSpacing - spacing) > 0.001) {
+        setSpacing(hm.geoSpacing);
       }
+
+      setWarnings(sanityWarnings({ hm, bitmap, metadata, spacing: effSpacing }));
       setStatus('Building mesh…');
 
       onReady({
@@ -120,6 +127,12 @@ export default function UploadPanel({ onReady }) {
         </label>
 
         <button className="wide primary big" onClick={build}>Build 3D scene</button>
+
+        {warnings.length > 0 && (
+          <ul className="muted" style={{ margin: '10px 0 0', paddingLeft: 18, lineHeight: 1.55 }}>
+            {warnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        )}
 
         {status && <p className="status">{status}</p>}
         {error && <p className="error">{error}</p>}

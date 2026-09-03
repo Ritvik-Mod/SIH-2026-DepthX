@@ -1,6 +1,5 @@
 // Reads the upstream hand-off files entirely in the browser.
-// heightmap.tif is a tiled, deflate-compressed, single-band float32 TIFF whose
-// values are REAL METRES (AGL). Nothing here normalises or rescales them.
+// heightmap.tif holds REAL METRES (AGL). Nothing here normalises or rescales.
 
 const DEFAULT_PIXEL_SPACING_M = 0.33;
 
@@ -8,6 +7,59 @@ export async function loadMetadata(file) {
   if (!file) return null;
   try {
     return JSON.parse(await file.text());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * TWO EXPORT PATHS EXIST UPSTREAM AND THEY DISAGREE ON BAND COUNT.
+ *
+ *   scripts/export_for_threejs.py  ->  1 band  (agl_metres)
+ *   heightmap/export.py            ->  3 bands (agl_metres, sigma_metres, agl_normalised)
+ *                                      -- this is the contract written in SPEC.md
+ *
+ * Every bundle handed over so far has been single-band, so the old hard
+ * rejection ("Expected a single-band height raster, got 3 bands") never fired.
+ * It would fire the moment anyone exported through the documented path, and the
+ * viewer would refuse a file that is perfectly valid. Band 1 is agl_metres in
+ * BOTH, so read band 1 and carry on.
+ *
+ * Band 3 is deliberately NOT used: it is percentile-normalised to [0,1] and is
+ * a fallback for consumers who want to calibrate from scratch. Loading it as
+ * geometry would silently rescale the whole scene.
+ */
+function pickHeightBand(rasters, image) {
+  if (rasters.length === 1) return { band: rasters[0], index: 0, note: 'single-band raster' };
+
+  // Prefer a band literally described as the AGL band, if the writer set it.
+  const descs = image.fileDirectory?.GDAL_METADATA || '';
+  const named = /agl_metres/i.test(descs);
+  return {
+    band: rasters[0],
+    index: 0,
+    note: `${rasters.length}-band raster; read band 1${named ? ' (agl_metres)' : ''}, ignored the rest`,
+  };
+}
+
+/**
+ * Pixel spacing straight from the GeoTIFF when it is georeferenced.
+ *
+ * ModelPixelScale is [scaleX, scaleY, scaleZ] in CRS units. For a projected CRS
+ * (UTM and friends) those units are metres and the value is usable directly. For
+ * a geographic CRS the units are DEGREES, and treating 8.9e-6 degrees as 8.9e-6
+ * metres would shrink a 338 m tile to under a millimetre -- so that case is
+ * rejected rather than guessed at.
+ */
+function pixelSpacingFromGeoTIFF(image) {
+  try {
+    const scale = image.fileDirectory?.ModelPixelScale;
+    if (!scale || !scale.length) return null;
+    const sx = Math.abs(Number(scale[0]));
+    if (!Number.isFinite(sx) || sx <= 0) return null;
+    if (sx < 1e-3) return null;             // degrees, not metres -- do not guess
+    if (sx > 1000) return null;             // implausible for a viewer tile
+    return sx;
   } catch {
     return null;
   }
@@ -23,39 +75,38 @@ export async function loadHeightmap(file, onProgress) {
   const width = image.getWidth();
   const height = image.getHeight();
   const samples = image.getSamplesPerPixel();
-  if (samples !== 1) {
-    throw new Error(`Expected a single-band height raster, got ${samples} bands.`);
-  }
 
   onProgress?.(`Reading ${width}x${height} raster…`);
-  const [raster] = await image.readRasters({ interleave: false });
-  const data = raster instanceof Float32Array ? raster : Float32Array.from(raster);
+  const rasters = await image.readRasters({ interleave: false });
+  const { band, note } = pickHeightBand(rasters, image);
+  const data = band instanceof Float32Array ? band : Float32Array.from(band);
 
   // nodata handling: GDAL_NODATA tag, falling back to the -9999 convention.
   const tag = image.fileDirectory?.GDAL_NODATA;
   const nodata = tag != null ? parseFloat(tag) : -9999;
+  const isNodata = (v) => !Number.isFinite(v) || v === nodata || v <= -9000;
 
   let min = Infinity;
   let max = -Infinity;
-  let sum = 0;
-  let nodataPixels = 0;
-
   for (let i = 0; i < data.length; i++) {
     const v = data[i];
-    if (!Number.isFinite(v) || v === nodata || v <= -9000) continue;
+    if (isNodata(v)) continue;
     if (v < min) min = v;
     if (v > max) max = v;
   }
   if (!Number.isFinite(min)) throw new Error('Height raster contains no valid pixels.');
 
+  // Nodata is filled with the scene minimum rather than 0: a tile whose ground
+  // sits at 2 m would otherwise get 2 m-deep pits wherever data is missing, and
+  // those read as real holes in the mesh.
+  let sum = 0;
+  let nodataPixels = 0;
   for (let i = 0; i < data.length; i++) {
-    const v = data[i];
-    if (!Number.isFinite(v) || v === nodata || v <= -9000) {
-      data[i] = min;
-      nodataPixels++;
-    }
+    if (isNodata(data[i])) { data[i] = min; nodataPixels++; }
     sum += data[i];
   }
+
+  const geoSpacing = pixelSpacingFromGeoTIFF(image);
 
   return {
     data,
@@ -65,6 +116,10 @@ export async function loadHeightmap(file, onProgress) {
     max,
     mean: sum / data.length,
     nodataPixels,
+    bands: samples,
+    bandNote: note,
+    geoSpacing,
+    georeferenced: !!geoSpacing,
     gdalMetadata: image.fileDirectory?.GDAL_METADATA ?? null,
   };
 }
@@ -105,8 +160,12 @@ export function classifyFiles(fileList) {
   for (const f of fileList) {
     const name = f.name.toLowerCase();
     if (/\.(tif|tiff)$/.test(name)) out.heightmap = f;
-    else if (/\.json$/.test(name)) out.metadata = f;
-    else if (/\.(png|jpg|jpeg|webp)$/.test(name)) {
+    else if (/\.json$/.test(name)) {
+      // manifest.json describes a whole batch and carries no pixel spacing for
+      // this scene; taking it as the sidecar silently falls back to the default.
+      if (name.includes('manifest')) out.ignored.push(f.name);
+      else out.metadata = f;
+    } else if (/\.(png|jpg|jpeg|webp)$/.test(name)) {
       if (name.includes('preview') || name.includes('heightmap')) out.ignored.push(f.name);
       else out.texture = f;
     } else out.ignored.push(f.name);
@@ -117,4 +176,34 @@ export function classifyFiles(fileList) {
 export function resolvePixelSpacing(metadata) {
   const v = Number(metadata?.pixel_spacing_m);
   return Number.isFinite(v) && v > 0 ? v : DEFAULT_PIXEL_SPACING_M;
+}
+
+/**
+ * Warnings worth showing the user before they build a scene. None of these are
+ * fatal; all of them have produced a confusing render at least once.
+ */
+export function sanityWarnings({ hm, bitmap, metadata, spacing }) {
+  const w = [];
+  if (hm.bands > 1) w.push(hm.bandNote);
+  if (bitmap && (bitmap.width !== hm.width || bitmap.height !== hm.height)) {
+    w.push(`Texture is ${bitmap.width}x${bitmap.height} but the raster is ${hm.width}x${hm.height}; UVs stretch to fit.`);
+  }
+  if (hm.nodataPixels > hm.data.length * 0.02) {
+    w.push(`${((100 * hm.nodataPixels) / hm.data.length).toFixed(1)}% of pixels are nodata, filled with the scene minimum.`);
+  }
+  const q = metadata?.quantity;
+  if (q && q !== 'AGL') {
+    w.push(`metadata says quantity="${q}", not "AGL" — heights may be absolute elevation, not height above ground.`);
+  }
+  if (metadata?.field_source === 'ground_truth_lidar') {
+    w.push('This bundle is GROUND TRUTH LiDAR, not a model prediction.');
+  }
+  if (metadata?.split === 'train') {
+    w.push('This tile is from the TRAIN split — for pipeline development only, never for accuracy claims.');
+  }
+  if (hm.geoSpacing && Math.abs(hm.geoSpacing - spacing) > 0.01) {
+    w.push(`GeoTIFF says ${hm.geoSpacing.toFixed(3)} m/px but ${spacing} m/px is selected.`);
+  }
+  if (hm.max > 400) w.push(`Max height ${hm.max.toFixed(0)} m is unusually tall — check the units.`);
+  return w;
 }

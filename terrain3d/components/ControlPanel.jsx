@@ -60,9 +60,27 @@ export default function ControlPanel(props) {
               className={mode === 'fly' ? 'seg on' : 'seg'}
               onClick={() => setMode('fly')}
             >
-              Fly (WASD)
+              Fly
+            </button>
+
+            <button
+              className={mode === 'walk' ? 'seg on' : 'seg'}
+              onClick={() => setMode('walk')}
+            >
+              Walk
             </button>
           </div>
+
+          {(mode === 'fly' || mode === 'walk') && (
+            <p className="muted" style={{ marginTop: 8 }}>
+              Click the scene to capture the mouse. <b>W A S D</b> move
+              {mode === 'fly' ? ', ' : ' · '}
+              {mode === 'fly' ? <><b>Space</b> / <b>Ctrl</b> altitude, </> : <><b>Space</b> jump · </>}
+              <b>Shift</b> sprint · <b>Alt</b> slow · <b>scroll</b> speed ·{' '}
+              <b>F</b> swap fly/walk · <b>R</b> recover · <b>Esc</b> release.
+              The camera cannot pass below the surface.
+            </p>
+          )}
 
           {/* GEOMETRY */}
 

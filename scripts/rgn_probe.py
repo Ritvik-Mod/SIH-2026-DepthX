@@ -15,8 +15,22 @@ as an automatic selection criterion that needs no extra hyperparameters.
 What this script adds over a bare RGN reading: RGN is computed on TWO domains and the
 RATIO is reported.  An absolute RGN curve is dominated by depth-dependent gradient
 scaling and by how large each block's weights happen to be, so it says little on its
-own.  RGN_shifted / RGN_reference divides that structure out and leaves the part that
-is actually about the domain shift.
+own.  The A/B ratio divides that structure out.
+
+Be precise about what the ratio is, though: ||theta|| is the SAME group in numerator and
+denominator, so it cancels exactly and
+
+    ratio = RGN_shift / RGN_ref = ||g_shift||_2 / ||g_ref||_2
+
+The RGN normalisation does no work in the ratio column -- it matters only for the
+absolute columns and for Auto-RGN-style selection on a single domain.  The ratio is a
+plain per-group gradient-norm ratio, which is a cleaner quantity anyway; do not describe
+it as an RGN comparison.
+
+CHOOSE THE CHECKPOINT CAREFULLY.  The shifted domain must be one the checkpoint was
+NEVER TRAINED ON.  Pointing this at a model that trained on both cities measures "which
+groups react to harder tiles", not "which groups react to a new domain" -- the two look
+identical in the output and only the checkpoint choice tells them apart.
 
 IMPORTANT about interpretation: both domains default to tiles the model never trained
 on.  If you point domain A at training tiles instead, the ratio conflates "this block

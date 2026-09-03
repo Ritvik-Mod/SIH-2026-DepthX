@@ -12,12 +12,14 @@
 #   qsub hpc/24_rgnprobe.pbs
 #   qsub -v REF="DC PHL",SHIFT=NYC,TILES=128 hpc/24_rgnprobe.pbs
 #
-# NYC is the shifted domain because it is a domain shift we have ALREADY measured --
-# held-out NYC gave building MAE 1.585 with overall bias -2.02 m and r 0.93 -> 0.74.
-# It is a rehearsal for India using data already on this cluster.
+# THE CHECKPOINT MUST NOT HAVE TRAINED ON THE SHIFTED CITY.
+# a7_vitl trained on the OFFICIAL split, which contains NYC -- so for a7_vitl, NYC is
+# in-domain and this probe would measure tile difficulty, not domain shift.  The
+# holdout run (DC+PHL only) is the one NYC is genuinely held out from, and it is the
+# only correct default here.
 source "${PBS_O_WORKDIR}/hpc/_common.sh"
 
-: "${CKPT:=outputs/a7_vitl/best.pt}"
+: "${CKPT:=outputs/holdout_vitl/best.pt}"
 : "${REF:=DC PHL}"
 : "${SHIFT:=NYC}"
 : "${TILES:=128}"

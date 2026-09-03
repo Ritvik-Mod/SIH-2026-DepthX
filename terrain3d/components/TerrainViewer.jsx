@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
   buildTerrainGeometry,
   createTerrainMaterial,
+  createTreeLayer,
   makeHeightCheckTexture,
   sampleBilinear,
   sharpenHeights,
@@ -38,7 +39,24 @@ export default function TerrainViewer({ dataset, onReset }) {
   const [sunEl, setSunEl] = useState(45);
   const [busy, setBusy] = useState(true);
   const [work, setWork] = useState(null);
-  const [hud, setHud] = useState({ fps: 0, alt: 0, ground: 0, x: 0, z: 0 });
+  const [hud, setHud] = useState({ fps: 0, alt: 0, ground: 0, x: 0, z: 0, trees: 0 });
+
+  // ------------------------------------------------------- opt-in features
+  // Nothing below is active unless switched on, and every one is display-only:
+  // the height array is never written to. `windows` and `edges` are pure
+  // shading. `trees` adds an overlay; `level` lowers the RENDERED surface of a
+  // detected tree mound and does nothing at all until trees are on.
+  const [showHud, setShowHud] = useState(true);
+  const [windows, setWindows] = useState(true);
+  const [edges, setEdges] = useState(true);
+  const [trees, setTrees] = useState(false);
+  const [level, setLevel] = useState(true);
+
+  // read by the analysis pass, which must not re-run when a toggle flips
+  const optsRef = useRef({ trees: false, level: true, windows: true, edges: true });
+  optsRef.current = { trees, level, windows, edges };
+
+  const analyse = windows || trees;
 
   // ------------------------------------------------------------ init once
   useEffect(() => {
@@ -111,11 +129,19 @@ export default function TerrainViewer({ dataset, onReset }) {
     // grayscale height texture for the alignment self-check
     const checkTexture = makeHeightCheckTexture(heights, width, height, min, max);
 
-    const material = createTerrainMaterial({ map: texture, maxHeight: max });
+    // extents let the shader sample the site / canopy masks from world XZ
+    const material = createTerrainMaterial({
+      map: texture, maxHeight: max, extentX, extentZ,
+    });
+    material.userData.uniforms.uSky.value.setHex(SKY);
+
     const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.scale.y = exag;
+    // shadows render through their own depth material; this one mirrors the
+    // mound levelling so a levelled mound stops casting a mound-shaped shadow
+    mesh.customDepthMaterial = material.userData.depthMaterial;
     scene.add(mesh);
 
     const world = {
@@ -127,14 +153,69 @@ export default function TerrainViewer({ dataset, onReset }) {
       raf: 0,
       frames: 0,
       fpsClock: 0,
+      // opt-in enrichment; all null until the analysis pass runs
+      treesGroup: null,
+      treeCount: 0,
+      canopyTexture: null,
+      siteTexture: null,
+      canopyDelta: null,
+      canopyDeltaData: null,
+      canopyDeltaMax: 0,
+      levelled: false,
     };
     worldRef.current = world;
 
     const sampleGround = (wx, wz) => {
       const fx = wx / extentX + 0.5;
       const fy = wz / extentZ + 0.5; // +Z is the last raster row after the -90 deg rotation
-      return sampleBilinear(world.heights, width, height, fx, fy) * world.mesh.scale.y;
+      let h = sampleBilinear(world.heights, width, height, fx, fy);
+      // while mounds are levelled the drawn surface sits below the height
+      // array, so the readout follows the surface actually on screen
+      if (world.canopyDelta) {
+        h -= sampleBilinear(world.canopyDelta, width, height, fx, fy);
+      }
+      return h * world.mesh.scale.y;
     };
+
+    // Instanced forests bake their transforms, so any change to the vertical
+    // exaggeration -- slider or reveal animation -- must re-seat them or they
+    // float and sink away from the terrain.
+    const syncTreesY = () => {
+      if (!world.treesGroup) return;
+      const sy = world.mesh.scale.y;
+      for (const child of world.treesGroup.children) {
+        if (typeof child.userData.rebase === 'function') {
+          child.userData.rebase(sy, world.levelled);
+        }
+      }
+    };
+    world.syncTreesY = syncTreesY;
+
+    // The single place the opt-in uniforms are set, so "off" always means
+    // exactly the original render.
+    const applyOptions = (o) => {
+      const u = world.material.userData.uniforms;
+      const hasSite = !!world.siteTexture;
+      const hasMask = !!world.canopyTexture;
+
+      u.uSiteOn.value = hasSite ? 1 : 0;
+      u.uWindows.value = o.windows && hasSite ? 1 : 0;
+      u.uEdge.value = o.edges ? 1 : 0;
+
+      if (world.treesGroup) world.treesGroup.visible = !!o.trees;
+
+      const levelling = !!(o.trees && o.level && hasMask && world.canopyDeltaMax > 0);
+      world.levelled = levelling;
+
+      u.uCanopyOn.value = o.trees && hasMask ? 1 : 0;
+      u.uDeltaMax.value = levelling ? world.canopyDeltaMax : 0;
+      u.uCanopyFlatten.value = levelling ? 1 : 0;
+      world.canopyDelta = levelling ? world.canopyDeltaData : null;
+
+      syncTreesY();
+      world.material.needsUpdate = true;
+    };
+    world.applyOptions = applyOptions;
 
     const onResize = () => {
       const w = mount.clientWidth;
@@ -157,6 +238,7 @@ export default function TerrainViewer({ dataset, onReset }) {
         const k = Math.min(world.rise.t / world.rise.dur, 1);
         const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
         world.mesh.scale.y = 0.0001 + e * world.targetExag;
+        syncTreesY();
         if (k >= 1) world.rise = null;
       }
 
@@ -174,6 +256,7 @@ export default function TerrainViewer({ dataset, onReset }) {
           ground: sampleGround(camera.position.x, camera.position.z),
           x: camera.position.x,
           z: camera.position.z,
+          trees: world.treeCount,
         });
         world.frames = 0;
         world.fpsClock = 0;
@@ -188,8 +271,22 @@ export default function TerrainViewer({ dataset, onReset }) {
       orbit.dispose();
       world.mesh.geometry.dispose();
       material.dispose();
+      material.userData.depthMaterial.dispose();
       texture.dispose();
       checkTexture.dispose();
+      if (world.treesGroup) {
+        scene.remove(world.treesGroup);
+        world.treesGroup.traverse((o) => {
+          if (!o.isMesh) return;
+          o.geometry.dispose();
+          if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+          else o.material.dispose();
+        });
+      }
+      if (world.canopyTexture) world.canopyTexture.dispose();
+      if (world.siteTexture) world.siteTexture.dispose();
+      plinth.geometry.dispose();
+      plinth.material.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
@@ -230,12 +327,118 @@ export default function TerrainViewer({ dataset, onReset }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [work, segments]);
 
+  // ----------------------------------------------- scene analysis (opt-in)
+  // One pass yields both the building information the facade shader needs and
+  // the tree clumps, so flipping either toggle afterwards is free. Keyed on the
+  // heights, never on a toggle.
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world || !work) return;
+
+    const disposeGroup = (g) => {
+      g.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry.dispose();
+        if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+        else o.material.dispose();
+      });
+    };
+
+    const clear = () => {
+      const u = world.material.userData.uniforms;
+      if (world.treesGroup) {
+        world.scene.remove(world.treesGroup);
+        disposeGroup(world.treesGroup);
+        world.treesGroup = null;
+      }
+      world.treeCount = 0;
+      if (world.canopyTexture) { world.canopyTexture.dispose(); world.canopyTexture = null; }
+      if (world.siteTexture) { world.siteTexture.dispose(); world.siteTexture = null; }
+      world.canopyDelta = null;
+      world.canopyDeltaData = null;
+      world.canopyDeltaMax = 0;
+      world.levelled = false;
+      u.uSite.value = null;
+      u.uCanopy.value = null;
+      u.uSiteOn.value = 0;
+      u.uWindows.value = 0;
+      u.uCanopyOn.value = 0;
+      u.uCanopyFlatten.value = 0;
+      u.uDeltaMax.value = 0;
+      world.material.needsUpdate = true;
+    };
+
+    clear();
+    if (!analyse) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const r = await createTreeLayer({
+          source: bitmap.source,
+          width,
+          height,
+          heights: work,          // placement: the array the mesh is built from
+          detectHeights: heights, // detection: the RAW dsm, before sharpening
+          extentX,
+          extentZ,
+          verticalScale: exag,    // settled value, not a mid-animation scale
+          maxTrees: 1400,
+          textureFlipY: bitmap.flipY, // whether the decoded RGB needs flipping
+        });
+
+        if (cancelled) {
+          disposeGroup(r.group);
+          r.maskTexture.dispose();
+          r.siteTexture.dispose();
+          return;
+        }
+
+        const u = world.material.userData.uniforms;
+
+        world.siteTexture = r.siteTexture;
+        u.uSite.value = r.siteTexture;
+        u.uGroundMin.value = r.groundMin;
+        u.uGroundSpan.value = r.groundSpan;
+
+        world.treesGroup = r.group;
+        world.treeCount = r.count;
+        world.canopyTexture = r.maskTexture;
+        world.canopyDeltaData = r.flattenDelta;
+        world.canopyDeltaMax = r.deltaMax;
+        u.uCanopy.value = r.maskTexture;
+
+        world.scene.add(r.group);
+        world.applyOptions(optsRef.current);
+
+        console.log(
+          '[scene]', r.stats.buildings, 'buildings ·',
+          r.stats.clumps, 'tree clumps ->', r.count, 'trees', r.stats
+        );
+      } catch (err) {
+        console.error('Scene analysis failed:', err);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [work, analyse, width, height, extentX, extentZ, bitmap]);
+
+  // ------------------------------------------------------- feature toggles
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world || !world.applyOptions) return;
+    world.applyOptions({ trees, level, windows, edges });
+  }, [trees, level, windows, edges]);
+
   // --------------------------------------------------------- exaggeration
   useEffect(() => {
     const world = worldRef.current;
     if (!world || world.rise) return;
     world.targetExag = exag;
     world.mesh.scale.y = exag;
+    if (world.syncTreesY) world.syncTreesY();
   }, [exag]);
 
   // -------------------------------------------------------------- shading
@@ -296,6 +499,20 @@ export default function TerrainViewer({ dataset, onReset }) {
     a.click();
   }, []);
 
+  const pill = (on) => ({
+    padding: '5px 11px',
+    borderRadius: 999,
+    fontSize: 11,
+    cursor: 'pointer',
+    fontFamily: 'ui-monospace, monospace',
+    letterSpacing: '0.03em',
+    border: `1px solid ${on ? 'rgba(95,178,255,0.55)' : 'rgba(255,255,255,0.12)'}`,
+    background: on ? 'rgba(95,178,255,0.16)' : 'rgba(17,21,26,0.86)',
+    color: on ? '#8ecbff' : 'rgba(255,255,255,0.55)',
+    backdropFilter: 'blur(10px)',
+    transition: 'all 120ms ease',
+  });
+
   return (
     <div className="viewer">
       <div ref={mountRef} className="canvasMount" />
@@ -309,7 +526,23 @@ export default function TerrainViewer({ dataset, onReset }) {
         }}
         stats={{ width, height, min, max, mean, pixelSpacing, extentX, extentZ, nodataPixels }}
       />
-      <Hud hud={hud} mode={mode} />
+      {/* Feature toggles live here so ControlPanel.jsx stays untouched. */}
+      <div
+        style={{
+          position: 'absolute', bottom: 16, left: 16, zIndex: 5,
+          display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 340,
+        }}
+      >
+        <button style={pill(showHud)} onClick={() => setShowHud((v) => !v)}>HUD</button>
+        <button style={pill(windows)} onClick={() => setWindows((v) => !v)}>WINDOWS</button>
+        <button style={pill(edges)} onClick={() => setEdges((v) => !v)}>EDGES</button>
+        <button style={pill(trees)} onClick={() => setTrees((v) => !v)}>TREES</button>
+        {trees && (
+          <button style={pill(level)} onClick={() => setLevel((v) => !v)}>LEVEL MOUNDS</button>
+        )}
+      </div>
+
+      {showHud && <Hud hud={hud} mode={mode} trees={trees} />}
       {busy && (
         <div
           style={{

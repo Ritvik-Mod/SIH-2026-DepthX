@@ -1,6 +1,6 @@
 'use client';
 
-export default function Hud({ hud, mode }) {
+export default function Hud({ hud, mode, trees = false }) {
   return (
     <>
       <div className="hud">
@@ -9,6 +9,7 @@ export default function Hud({ hud, mode }) {
         <div><span>SURFACE</span><b>{hud.ground.toFixed(1)} m</b></div>
         <div><span>AGL</span><b>{(hud.alt - hud.ground).toFixed(1)} m</b></div>
         <div><span>X / Z</span><b>{hud.x.toFixed(0)} / {hud.z.toFixed(0)}</b></div>
+        {trees && <div><span>TREES</span><b>{hud.trees ?? 0}</b></div>}
       </div>
 
       <div className="help">

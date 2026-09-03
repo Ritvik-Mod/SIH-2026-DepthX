@@ -1,0 +1,5 @@
+_base_: f_base.yaml
+# F3 -- everything.  Today's recipe (A1-A7 behaviour), as the baseline to beat.
+# llrd stays 1.0 here so this is EXACTLY the existing flat-LR behaviour.
+out_dir: outputs/f3_full
+train: {trainable_blocks: all, train_neck: true, llrd: 1.0}

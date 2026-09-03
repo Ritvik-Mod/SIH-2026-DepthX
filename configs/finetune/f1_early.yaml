@@ -1,0 +1,7 @@
+_base_: f_base.yaml
+# F1 -- early blocks.  The surgical-fine-tuning prior for an INPUT-LEVEL shift
+# (Lee et al., ICLR 2023: first-block-only beat full fine-tuning by ~3% on CIFAR-10-C).
+# For ViT-S this is blocks 0-5 of 12; override to 0-11 when running ViT-L (24 blocks).
+# Also unfreezes the DPT tap that feeds the finest-resolution branch of the neck.
+out_dir: outputs/f1_early
+train: {trainable_blocks: '0-5', train_neck: true}

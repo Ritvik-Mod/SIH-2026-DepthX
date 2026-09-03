@@ -1,0 +1,6 @@
+_base_: f_base.yaml
+# F2 -- late blocks.  The OUTPUT-LEVEL arm, and the configuration most people assume
+# is "the" way to fine-tune.  Matched to F1 in block count so the comparison is not
+# confounded by trainable-parameter count.
+out_dir: outputs/f2_late
+train: {trainable_blocks: '6-11', train_neck: true}

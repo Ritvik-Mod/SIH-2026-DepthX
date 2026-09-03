@@ -77,6 +77,19 @@ train:
   min_lr: 1.0e-6
   clip_grad: 1.0
   freeze_encoder_epochs: 2
+  # --- block-level surgery, for the India fine-tuning sweep -------------------
+  # trainable_blocks: which ENCODER blocks may learn. 'all' (default, = A1..A7
+  # behaviour) | 'none' | '0-7' | '16-23' | '0-3,20-23'.  0-based over the encoder's
+  # own layer list: ViT-S is 0..11, ViT-L is 0..23.  NOT the same numbering as the
+  # config's out_indices, which is 1-based over stages.
+  trainable_blocks: all
+  train_neck: true          # false freezes the whole DPT neck
+  train_embed: false        # patch/pos embedding; left frozen even when block 0 trains
+  # llrd: layerwise lr decay. block i gets lr_encoder * llrd**(n-1-i), so the LAST
+  # block keeps lr_encoder.  1.0 == the flat behaviour A1..A7 trained with.
+  # 0.65-0.75 is the usual ViT range; >1 inverts it and favours the EARLY blocks,
+  # which is what surgical fine-tuning argues for under an input-level shift.
+  llrd: 1.0
   amp_dtype: bf16           # bf16 | fp16 | none
   ema_decay: 0.999
   val_every: 1

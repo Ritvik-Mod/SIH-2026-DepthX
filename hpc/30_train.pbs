@@ -14,8 +14,13 @@
 # Walltime-safe: train.resume=auto continues from out_dir/last.pt, and the checkpoint is
 # written atomically, so a job killed at the limit loses at most one epoch.  Re-qsub the
 # SAME command to continue; it no-ops once the epoch count is reached.
+# EXTRA appends dotlist overrides, for sweeps that run one config at several seeds:
+#   qsub -v CFG=configs/finetune/f1_early.yaml,EXTRA="seed=2024 out_dir=outputs/f1_s2024"
+# It comes LAST so it wins over the defaults set here -- including out_dir, which
+# otherwise collides and two seeds would overwrite each other's checkpoints.
 source "${PBS_O_WORKDIR}/hpc/_common.sh"
 : "${CFG:?pass -v CFG=configs/ablations/aN_xxx.yaml}"
+: "${EXTRA:=}"
 RUN=$(basename "$CFG" .yaml)
 
 python -m heightmap.train --config="$CFG" \
@@ -23,7 +28,7 @@ python -m heightmap.train --config="$CFG" \
     data.sun_cache="$DATA_ROOT/GAMUS/sun_angles.json" \
     data.num_workers=14 \
     out_dir="outputs/$RUN" \
-    train.resume=auto
+    train.resume=auto $EXTRA
 
 echo "=== $RUN finished at $(date) ==="
 tail -3 "outputs/$RUN/log.jsonl" 2>/dev/null || true

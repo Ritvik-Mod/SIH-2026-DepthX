@@ -79,28 +79,134 @@ class HeightNet(nn.Module):
         return out
 
     # ---- optimisation helpers ----------------------------------------------
-    def param_groups(self, lr_encoder: float, lr_decoder: float, lr_head: float, weight_decay: float):
+    # ---- block-level surgery ------------------------------------------------
+    def n_blocks(self) -> int:
+        return len(self.backbone.encoder.layer)
+
+    @staticmethod
+    def _parse_blocks(spec, n: int) -> set[int]:
+        """'all' | 'none' | '0-7' | '16-23' | '0-3,20-23' -> a set of block indices.
+
+        Indices are 0-based over the encoder's own layer list, so ViT-S is 0..11 and
+        ViT-L is 0..23.  Note this is NOT the same numbering as the config's
+        `out_indices` ([3,6,9,12] / [5,12,18,24]), which is 1-based over stages -- so
+        DAv2-Large's finest DPT tap, "stage5", is block index 4 here.  Getting this
+        wrong silently freezes the wrong end of the network, which is exactly the class
+        of bug this project keeps finding.
+        """
+        s = str(spec).strip().lower()
+        if s in ("all", "", "*"):
+            return set(range(n))
+        if s == "none":
+            return set()
+        keep: set[int] = set()
+        for part in s.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "-" in part:
+                a, b = part.split("-", 1)
+                lo, hi = int(a), int(b)
+            else:
+                lo = hi = int(part)
+            if not (0 <= lo <= hi < n):
+                raise ValueError(f"block range '{part}' outside 0..{n-1} for this backbone")
+            keep |= set(range(lo, hi + 1))
+        return keep
+
+    def set_trainable_blocks(self, spec, train_embed: bool = False):
+        """Freeze every encoder block except those named.  Returns the kept set.
+
+        The patch/pos embedding is frozen by default even when block 0 is trained: it is
+        a single projection shared by every token, it is the most heavily pretrained
+        thing in the model, and a small target set moves it in ways that do not
+        generalise.  Pass train_embed=True to include it deliberately.
+        """
+        n = self.n_blocks()
+        keep = self._parse_blocks(spec, n)
+        for i, blk in enumerate(self.backbone.encoder.layer):
+            for p in blk.parameters():
+                p.requires_grad_(i in keep)
+        for pn, p in self.backbone.named_parameters():
+            if pn.startswith("embeddings"):
+                p.requires_grad_(bool(train_embed))
+        self._freeze_structurally_dead()      # mask_token must stay dead
+        self._trainable_blocks = sorted(keep)
+        self._train_embed = bool(train_embed)
+        return self._trainable_blocks
+
+    def set_neck_trainable(self, flag: bool):
+        for p in self.neck.parameters():
+            p.requires_grad_(flag)
+        self._freeze_structurally_dead()
+
+    def param_groups(self, lr_encoder: float, lr_decoder: float, lr_head: float,
+                     weight_decay: float, llrd: float = 1.0):
         """Three rates because the three parts know different amounts.  Norm and bias
-        parameters are excluded from weight decay as is standard for ViT fine-tuning."""
-        buckets = {"encoder": (self.backbone, lr_encoder),
-                   "decoder": (self.neck, lr_decoder)}
-        heads = nn.ModuleList([m for m in (self.film, self.height_head, self.sem_head, self.unc_head)
-                               if m is not None])
-        buckets["head"] = (heads, lr_head)
+        parameters are excluded from weight decay as is standard for ViT fine-tuning.
+
+        `llrd` is layerwise learning-rate decay over the encoder blocks:
+        block i gets lr_encoder * llrd**(n-1-i), so the LAST block keeps lr_encoder and
+        earlier blocks are scaled down.  llrd=1.0 reproduces the flat behaviour exactly,
+        which is what A1-A7 trained with -- this is a strict generalisation, not a
+        change of default.  Values around 0.65-0.75 are the usual ViT fine-tuning range.
+        Set llrd>1 to invert it and move the EARLY blocks faster, which is what the
+        surgical-fine-tuning result argues for under an input-level shift.
+        """
         groups = []
-        for name, (mod, lr) in buckets.items():
+
+        def add(name, named_params, lr):
             decay, no_decay = [], []
-            for pn, p in mod.named_parameters():
+            for pn, p in named_params:
                 if not p.requires_grad:
                     continue
                 (no_decay if p.ndim <= 1 or pn.endswith(".bias") else decay).append(p)
             if decay:
-                groups.append({"params": decay, "lr": lr, "weight_decay": weight_decay, "name": f"{name}/decay"})
+                groups.append({"params": decay, "lr": lr, "weight_decay": weight_decay,
+                               "name": f"{name}/decay"})
             if no_decay:
-                groups.append({"params": no_decay, "lr": lr, "weight_decay": 0.0, "name": f"{name}/no_decay"})
+                groups.append({"params": no_decay, "lr": lr, "weight_decay": 0.0,
+                               "name": f"{name}/no_decay"})
+
+        n = self.n_blocks()
+        blocks = set()
+        for i, blk in enumerate(self.backbone.encoder.layer):
+            scale = float(llrd) ** (n - 1 - i)
+            add(f"encoder.blk{i:02d}", list(blk.named_parameters()), lr_encoder * scale)
+            blocks |= {id(p) for p in blk.parameters()}
+        rest = [(pn, p) for pn, p in self.backbone.named_parameters() if id(p) not in blocks]
+        add("encoder.rest", rest, lr_encoder)
+
+        add("decoder", list(self.neck.named_parameters()), lr_decoder)
+        heads = nn.ModuleList([m for m in (self.film, self.height_head, self.sem_head, self.unc_head)
+                               if m is not None])
+        add("head", list(heads.named_parameters()), lr_head)
         return groups
 
     def set_encoder_trainable(self, flag: bool):
-        for p in self.backbone.parameters():
-            p.requires_grad_(flag)
+        """Warmup freeze/unfreeze, honouring any block spec set by set_trainable_blocks.
+
+        The spec must win here.  param_groups() is built ONCE before the epoch loop and
+        only collects parameters whose requires_grad was true at that moment, so a block
+        frozen by the spec has no optimiser entry at all.  If this method later flipped
+        it back on, it would accumulate gradients that nothing ever applies -- trainable
+        by every assertion, silently frozen in fact.  That is precisely the class of
+        silent divergence this project keeps finding, so the spec is re-applied rather
+        than overridden.
+        """
+        spec = getattr(self, "_trainable_blocks", None)
+        if not flag:
+            for p in self.backbone.parameters():
+                p.requires_grad_(False)
+        elif spec is None:
+            for p in self.backbone.parameters():
+                p.requires_grad_(True)
+        else:
+            keep = set(spec)
+            for i, blk in enumerate(self.backbone.encoder.layer):
+                for p in blk.parameters():
+                    p.requires_grad_(i in keep)
+            for pn, p in self.backbone.named_parameters():
+                if pn.startswith("embeddings"):
+                    p.requires_grad_(bool(getattr(self, "_train_embed", False)))
         self._freeze_structurally_dead()   # re-apply: unfreezing the encoder would revive mask_token

@@ -1,0 +1,17 @@
+_base_: ../ablations/a5_domainrand.yaml
+# Shared base for the F0-F3 block sweep.
+#
+# All four arms warm-start from the SAME weights and differ ONLY in which blocks may
+# learn.  That is the whole point: bug #16 was an ablation that silently trained from
+# scratch instead of fine-tuning, and it would have read as "the idea does not work".
+# init_from is weights-only, epoch 0, fresh optimiser -- NOT resume.
+#
+# 20 epochs, not 60: these arms exist to RANK block selections, and each is a
+# fine-tune from an already-converged checkpoint, not a fresh run.
+train:
+  init_from: outputs/a5_domainrand/best.pt
+  epochs: 20
+  freeze_encoder_epochs: 0     # already warm; the head is not random any more
+  lr_encoder: 1.0e-5
+  lr_decoder: 3.0e-5
+  lr_head: 5.0e-5

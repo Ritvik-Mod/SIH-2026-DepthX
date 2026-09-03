@@ -100,8 +100,22 @@ def main(argv=None):
     model = HeightNet(cfg).to(device)
     lossfn = CombinedLoss(cfg)
 
+    # Block surgery BEFORE param_groups: a frozen block must never receive an optimiser
+    # entry, or it would accumulate gradients that nothing applies -- trainable by every
+    # assertion and silently frozen in fact.
+    spec = str(getattr(cfg.train, "trainable_blocks", "all"))
+    kept = model.set_trainable_blocks(spec, bool(getattr(cfg.train, "train_embed", False)))
+    if not bool(getattr(cfg.train, "train_neck", True)):
+        model.set_neck_trainable(False)
+    n_tr = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"trainable blocks [{spec}] -> {len(kept)}/{model.n_blocks()} "
+          f"{'' if len(kept) > 8 else kept}  neck={cfg.train.train_neck}  "
+          f"embed={cfg.train.train_embed}  llrd={cfg.train.llrd}  "
+          f"trainable params {n_tr/1e6:.1f}M")
+
     groups = model.param_groups(float(cfg.train.lr_encoder), float(cfg.train.lr_decoder),
-                                float(cfg.train.lr_head), float(cfg.train.weight_decay))
+                                float(cfg.train.lr_head), float(cfg.train.weight_decay),
+                                float(getattr(cfg.train, "llrd", 1.0)))
     opt = torch.optim.AdamW(groups, betas=(0.9, 0.999), eps=1e-8)
     base_lrs = [g["lr"] for g in opt.param_groups]
     scaler = torch.amp.GradScaler(enabled=(amp_dt == torch.float16))

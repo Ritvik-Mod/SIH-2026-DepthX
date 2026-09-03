@@ -1,0 +1,7 @@
+_base_: ../base.yaml
+# A1 -- fine-tune with a plain metric regression head.  The honest floor.
+out_dir: outputs/a1_regression
+model: {head: regression, use_gsd: false, use_semantic: false, use_uncertainty: false}
+aug: {geometric: true, photometric: false}
+loss: {w_bin_ce: 0.0, w_chamfer: 0.0, w_sem: 0.0, w_shadow: 0.0, w_nll: 0.0}
+data: {scale_min: 1.0, scale_max: 1.0}

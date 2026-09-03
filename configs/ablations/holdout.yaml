@@ -1,0 +1,6 @@
+_base_: a5_domainrand.yaml
+# The city-held-out evaluation: train on DC+PHL, evaluate on NYC.  This is the number
+# that predicts performance on landscapes the model has not seen, which is what the
+# rubric scores.  Report it FIRST, before the in-domain number.
+out_dir: outputs/a5_holdout
+data: {split_mode: city_holdout, holdout_cities: [NYC]}

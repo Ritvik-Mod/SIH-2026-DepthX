@@ -1,133 +1,142 @@
-# 2D → 3D Terrain Viewer (Next.js + Three.js)
+# DepthWizard — single-image height estimation (SIH26175, ISRO)
 
-Step 4 of the reconstruction pipeline: takes the upstream hand-off
-(`heightmap.tif` + `texture.png` + `metadata.json`), builds a textured 3D
-terrain mesh, and lets you orbit or fly through it.
+Estimates per-pixel **height above local ground (AGL)** in metres from one nadir optical
+image, and exports a georeferenced raster for the calibration → TDA → 3D stages.
 
-Everything runs client-side in the browser. There is no server, no
-preprocessing step, and no API. You drop the same four files you were handed
-onto the page and the scene builds.
+**Interface contract: [`SPEC.md`](SPEC.md).** Read that first if you consume the output.
 
-## Run it
+## What this is
+
+DINOv2 encoder + DPT decoder, both inherited from Depth Anything V2, with the depth head
+**replaced**. Stock DAv2 predicts affine-invariant inverse depth — its loss was built so
+that `a·d + b` scores identically to `d`, so absolute scale was not lost, it was
+optimised away. No post-hoc rescaling recovers it; the head has to be retrained against
+metric nDSM supervision.
+
+On top of that:
+
+- **adaptive-bins head** — a pixel at a roof edge is either ground or roof, never the
+  average; regression is forced to emit that average, which is what makes edges melt
+- **GSD conditioning (FiLM)** — a 40-pixel-wide flat rectangle is a shed at 0.3 m/px and
+  a warehouse at 2 m/px; this is what makes metric output possible from one image
+- **auxiliary semantic head** — regularises the shared features and yields the building
+  mask needed for building-only metrics
+- **shadow-consistency loss** — physics, not a learned prior, so it transfers across
+  continents and needs no height labels
+- **uncertainty head** — optional per-pixel σ, for a tool whose wrong answers matter
+
+## Setup
 
 ```bash
-npm install
-npm run dev
+uv venv --python 3.13 .venv
+uv pip install --python .venv/bin/python torch torchvision transformers pillow numpy \
+  scipy rasterio matplotlib opencv-python-headless huggingface_hub safetensors \
+  h5py omegaconf tqdm imageio
 ```
 
-Open <http://localhost:3000>, drag all four hand-off files onto the drop zone
-(`heightmap_preview.png` is detected and ignored), then hit **Build 3D scene**.
+## Quick start
 
-Production: `npm run build && npm start`.
+```bash
+# 0. sample output for the downstream stages -- no model needed
+python scripts/make_contract_sample.py
 
-Requires Node 18+. Tested on Node 22 with Next 14.2.
+# 1. synthetic tiles, so everything is testable before the real download
+python scripts/make_synthetic.py --per-split 6
 
-## Controls
+# 2. the seven checks.  Do not rent a GPU until all pass.
+python scripts/sanity.py
 
-| | |
-|---|---|
-| **Orbit** (default) | drag to rotate, scroll to zoom, right-drag to pan |
-| **Fly** | click the canvas to capture the mouse, `WASD` to move, `Space`/`Ctrl` for altitude, `Shift` to boost, `Esc` to release |
-| Vertical exaggeration | `0` → `2.5x`. **1.00x is true metric scale.** |
-| Replay 2D → 3D | re-runs the reveal animation that raises the flat image into terrain |
-| Mesh resolution | 256 / 512 / 1024 segments |
-| Surface | RGB imagery or a height colour ramp; wireframe toggle |
-| Sun azimuth / elevation | moves the shadows live |
+# 3. real data
+python scripts/download_gamus.py --out data/GAMUS
+python scripts/dataset_stats.py --root data/GAMUS      # sets h_max, confirms SILog shift
+python scripts/estimate_sun.py --root data/GAMUS       # needed only for A6
 
-The HUD reports camera altitude, the surface height directly below, and the
-difference (true AGL clearance) — which is meaningful because the raster *is*
-an AGL product.
+# 4. the baseline that justifies the project
+python scripts/zero_shot_eval.py --root data/GAMUS --split val
 
-## How the data is handled
+# 5. train
+python -m heightmap.train --config=configs/ablations/a5_domainrand.yaml
+python -m heightmap.train --config=configs/ablations/holdout.yaml   # the honest number
 
-**Heights are read as real metres and never rescaled.** `lib/load.js` uses
-[geotiff.js](https://geotiffjs.github.io/) to decode the tiled, deflate-compressed,
-single-band float32 raster into a `Float32Array` directly in the browser. There
-is no normalise/denormalise round trip anywhere in the codebase.
+# 6. predict
+python -m heightmap.predict --ckpt outputs/a5_domainrand/best.pt --image scene.tif \
+  --out outputs/predictions --tta
+```
 
-`heightmap_preview.png` is deliberately never read as data. It is 8-bit
-normalised: 35.8 m across 256 levels quantises to 0.14 m steps, which would
-flatten roof pitch and porch detail into staircases.
+## Ablation ladder
 
-**Nodata** is taken from the `GDAL_NODATA` tag (falling back to the `-9999`
-convention) and patched to the scene floor so the mesh stays watertight. Your
-current file has zero nodata pixels; later crops may not.
+Each config states only its differences from the one below it (`_base_:` inheritance).
 
-**No DTM, so the ground plane is y = 0.** `metadata.json` states
-`DSM = DTM + heightmap`, but with `georeferenced: false` there is no terrain
-model to add. Rendering AGL directly on flat ground is both correct for this
-input and better looking — buildings sit on a level street grid instead of on a
-regional slope. When a georeferenced scene arrives, add the DTM inside
-`buildTerrainGeometry` and subtract a datum offset to keep vertices near the
-origin (pushing them to absolute elevation wrecks depth precision).
+| # | Config | Adds | Tests |
+|---|---|---|---|
+| A0 | `scripts/zero_shot_eval.py` | — | ceiling for any rescaling of stock DAv2 |
+| A1 | `a1_regression.yaml` | fine-tuning, regression head | does replacing the head help |
+| A2 | `a2_bins.yaml` | adaptive bins | long-tail flattening (watch signed bias) |
+| A3 | `a3_gsd.yaml` | GSD conditioning + scale aug | metric scale awareness |
+| A4 | `a4_semantic.yaml` | semantic aux head | multi-task benefit |
+| A5 | `a5_domainrand.yaml` | domain randomisation | robustness |
+| A6 | `a6_shadow.yaml` | shadow consistency | physical grounding |
+| A7 | `a7_vitl.yaml` | ViT-L | capacity |
+| — | `holdout.yaml` | train DC+PHL, eval NYC | **generalisation** |
 
-**Ground extent** comes from `resolution x pixel_spacing_m` read out of
-`metadata.json` at runtime — nothing is hardcoded to 1024 or 0.33. World units
-are metres, 1:1. Your scene is 337.92 m square with 35.79 m of relief.
+Run every row on **both** splits. The gap between them is itself a finding, and it is
+the number that predicts performance on unseen landscapes.
 
-## Implementation notes
+## Metrics
 
-**Exaggeration is `mesh.scale.y`, not a rebuild.** The mesh is baked once at
-true scale; the slider only changes a non-uniform scale. Three's `normalMatrix`
-is the inverse transpose, so lighting stays correct automatically and the
-slider (and the reveal animation) costs nothing. This is why the reveal can run
-at 60fps on a 263k-vertex mesh.
+Reported overall **and** building-only, because ~a third of pixels are ground at exactly
+0 m and are nearly free.
 
-**Mesh density is decoupled from raster density.** The full 1024² float array
-stays in memory and vertex heights are sampled from it bilinearly, so 512
-segments still reflects the whole raster rather than throwing away every other
-row.
-
-**Slope shading.** Gradients here reach 3.2 m per 0.33 m pixel (~84°), so the
-single continuous mesh has near-vertical quads standing in for building walls,
-with roof texture smeared down them — inherent to 2.5D displacement. A
-`wallness` term injected into `MeshStandardMaterial` via `onBeforeCompile`
-darkens and desaturates those faces so they read as walls. The vertex shader
-corrects the normal for the current exaggeration analytically
-(`n.y / uExag`), so it stays accurate as you move the slider.
-
-**Alignment.** Raster row 0 → the first `PlaneGeometry` row → local `+Y` →
-after `rotateX(-π/2)` it lands at `-Z`, and with three's default `flipY` it maps
-to texture `v = 1` = image row 0. Verified against the real file: vertex 0 is at
-`(-169, 13.79, -169)` with UV `(0, 1)`, and `raster[0,0]` is 13.79 m. If you
-ever swap the loader, re-check by loading the preview PNG as the texture — every
-white blob must sit on a hill.
-
-**Lighting.** The satellite texture already contains baked illumination, so
-ambient is generous (hemisphere at 1.15) and the directional light exists mostly
-to cast shadows. Shadows are the strongest "this is real geometry" cue in the
-whole demo — the sun azimuth slider is worth more than any UI polish.
+- `MAE`, `RMSE` — structure *and* calibration
+- `r` (Pearson) — **invariant to scale and shift**, so it isolates structure. Since
+  metric anchoring is a separate stage downstream, this is the cleanest measure of this
+  model's own contribution
+- `bias` — **signed**. Two models can both score 4 m MAE: one randomly off by ±4 m, the
+  other consistently 4 m short. Only bias separates them, and the second is the
+  long-tail flattening problem, quantified
+- `δ₁` — computed on `(h+1)` so ground does not divide by zero. Stated in the output
+- `sharpness` — mean gradient at *true-edge* locations. Note that mean gradient alone
+  does **not** measure sharpness: total variation is preserved when a step is blurred
+  into a ramp, so the measurement must be conditioned on where the truth has edges
 
 ## Layout
 
 ```
-app/
-  layout.jsx        shell + metadata
-  page.jsx          upload ⇄ viewer switch
-  globals.css       all styling
-components/
-  UploadPanel.jsx   drop zone, file classification, pixel-spacing override
-  TerrainViewer.jsx scene, camera, lights, shadows, render loop, reveal
-  ControlPanel.jsx  sliders and toggles
-  Hud.jsx           FPS / altitude / AGL readout
-lib/
-  load.js           geotiff decode, nodata, metadata, file classification
-  terrain.js        bilinear sampler, geometry builder, slope-shaded material
-  flyController.js  pointer-lock WASD camera
+configs/            base.yaml + ablations/ (A1..A7, holdout)
+heightmap/
+  config.py         yaml + dotted overrides + _base_ inheritance + validation guards
+  data/             gamus.py (dataset, splits), transforms.py (aug, scale->GSD)
+  models/           net.py (HeightNet), heads.py (bins, FiLM, semantic, uncertainty)
+  losses/           terms.py (silog, l1, gradient, bins, chamfer, nll), shadow.py, combined.py
+  metrics.py        metrics + exact streaming accumulator
+  train.py  infer.py  predict.py  export.py
+scripts/            download_gamus, dataset_stats, estimate_sun, zero_shot_eval,
+                    make_synthetic, make_contract_sample, sanity
+tests/              test_data, test_model, test_shadow, test_metrics, test_infer
 ```
 
-## Performance
+## Things the code knows that are easy to get wrong
 
-512 segments (263k verts) is the default and holds 60fps with shadows on
-integrated graphics. 1024 (1.05M verts, 2.1M tris) is fine on a discrete GPU but
-the shadow pass doubles the cost — switch to it for the "and here it is at full
-raster resolution" moment, not as the default.
-
-## Tuning for the demo
-
-Resist exaggeration above ~1.5x. At 1:1 the scene already has a 1:9.4 relief
-ratio and reads dramatically in perspective; pushed further, the 30–36 m tree
-canopy turns into spikes and the reconstruction stops looking credible. Frame
-your hero pass low over the rooftops along the street grid, where the geometry
-is sharp — the woods on the left are blobby domes, which is what the upstream
-depth model produced, not something the renderer can fix.
+- **h5py handles do not survive fork or pickling.** `GamusDataset.__getstate__` drops the
+  cache so DataLoader workers reopen their own. Without it you get corrupted reads or a
+  hang, not a clean error.
+- **Flips change the apparent sun direction.** `config.py` refuses `w_shadow > 0` together
+  with `aug.geometric`, because the loss would punish correct predictions.
+- **Constant GSD leaves FiLM's first layer untrained.** At `gsd == gsd_ref`, `z = log(1) = 0`
+  and `dL/dW = dL/dout · z = 0`. Scale augmentation is not optional; `sanity.py` asserts
+  this property explicitly.
+- **MPS cannot do adaptive pooling for non-divisible sizes** (518 → 296), so the target
+  downsamples use bilinear.
+- **bf16, not fp16.** SILog takes logs and square roots; fp16's narrow range NaNs them.
+- **GAMUS classes are 1..6, and building is 3** (1 ground, 2 low-vegetation, 3 building,
+  4 water, 5 road, 6 tree; 0 is unlabelled). Using 2 for building silently measures
+  low-vegetation, and excluding the wrong ids from the shadow loss removes the very
+  occluders that carry the height signal. See `heightmap/data/classes.py`.
+- **GAMUS GSD is 0.33 m** (paper, sec. 1), so trained GSD coverage is 0.17–0.65 m/px.
+  Coarser inputs (1 m Cartosat MX) are outside that range.
+- **Uniform bin probabilities start the prediction at `h_max/2`** (~125 m for a scene whose
+  median height is 4 m). The bin logits are initialised to an exponential decay whose
+  expectation is `init_height`, derived rather than tuned.
+- **Tile drift comes from tiles with no visible ground.** The model must locate the ground
+  to predict height above it; a tile that is entirely rooftop has to guess. Hence
+  coarse-guided levelling in `infer.py`.

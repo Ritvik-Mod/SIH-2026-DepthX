@@ -1,0 +1,6 @@
+_base_: f_base.yaml
+# F0 -- the floor.  Heads only; encoder AND neck frozen.
+# If this matches the other arms, the shift is output-level and nothing deeper is
+# needed.  Cheapest possible answer, so it has to be run first, not last.
+out_dir: outputs/f0_headsonly
+train: {trainable_blocks: none, train_neck: false}

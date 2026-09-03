@@ -1,0 +1,44 @@
+#!/bin/bash
+#PBS -N dw_demo12
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=64gb
+#PBS -l walltime=06:00:00
+#PBS -o logs/demo12.out
+#PBS -j oe
+#
+# Scores tiles from $SPLIT with the best checkpoint and renders the top N as
+# predict-vs-truth panels for the demo.  Each figure is stamped "BEST of <pool>
+# scanned" and the pool's min/median/max building MAE is printed, so the curated set
+# cannot be mistaken for typical performance.
+#
+#   qsub -v SPLIT=test,SCAN=900 hpc/23_demo12.pbs
+#
+# A7 trained on the official TRAIN split, so val and test are both unseen and both
+# fair game -- 3,720 tiles between them.  Never point this at train: those are the
+# images the weights were fitted on, and a demo built from them collapses the
+# moment anyone asks whether the tiles were in training.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+: "${CKPT:=outputs/a7_vitl/best.pt}"
+: "${SPLIT:=val}"
+: "${SCAN:=400}"
+: "${BEST:=12}"
+# Content floor.  Without it, "best by building MAE" returns the emptiest tiles in the
+# pool -- a flat field has nothing to get wrong.  The first run of this job selected
+# twelve PHL tiles with true p50 of 0.01 m and building r as low as 0.511, against the
+# model's overall building r of 0.908.
+: "${MINBF:=0.10}"
+: "${MINP99:=15}"
+: "${RANK:=composite}"
+
+python scripts/compare_predictions.py \
+    --ckpt "$CKPT" \
+    --root "$DATA_ROOT/GAMUS" \
+    --split "$SPLIT" \
+    --scan "$SCAN" \
+    --best "$BEST" \
+    --min-building-frac "$MINBF" \
+    --min-p99 "$MINP99" \
+    --rank "$RANK" \
+    --out "outputs/demo12_${SPLIT}" \
+    --device cuda

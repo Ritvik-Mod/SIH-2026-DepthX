@@ -1,0 +1,14 @@
+_base_: a5_domainrand.yaml
+# CONTROL for A6.  Identical to a6_shadow in every respect except w_shadow=0.
+#
+# A6 reached building MAE 1.732 against A5's 1.841 -- the best ViT-S result in the
+# ladder.  But A6 is a 40-epoch fine-tune ON TOP of A5's 60, at reduced learning rates,
+# so "shadow loss helps" and "40 more epochs help" are perfectly confounded in that
+# comparison.  This run has the same warm start, the same 40 epochs, the same reduced
+# learning rates and the same aug.geometric=false, and differs only in carrying no
+# shadow term.  A6 minus this is the shadow loss's actual effect.
+out_dir: outputs/a6_control
+aug: {geometric: false}
+loss: {w_shadow: 0.0}
+train: {epochs: 40, lr_encoder: 3.0e-6, lr_decoder: 1.0e-5, lr_head: 3.0e-5,
+        init_from: outputs/a5_domainrand/best.pt}

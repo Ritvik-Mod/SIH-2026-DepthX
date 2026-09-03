@@ -1,0 +1,6 @@
+_base_: a3_gsd.yaml
+# A4 -- + auxiliary semantic head.  Regularises shared features and yields the
+# building mask needed for building-only metrics.
+out_dir: outputs/a4_semantic
+model: {use_semantic: true}
+loss: {w_sem: 0.2}

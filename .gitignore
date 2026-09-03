@@ -2,3 +2,32 @@ node_modules
 .next
 out
 .DS_Store
+=======
+# environments
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# data and run artefacts — large, regenerable, or downloaded.
+# Anchored with a leading slash: a bare `data/` matches at ANY depth and would also
+# ignore the heightmap/data package, which is source code.
+/data/
+/outputs/
+/logs/
+*.pt
+*.pth
+*.h5
+*.tif
+*.npy
+hf_cache/
+
+# PBS job output
+*.out
+*.err
+discover.out
+
+# macOS
+.DS_Store
+Icon?

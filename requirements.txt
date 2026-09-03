@@ -1,0 +1,15 @@
+torch>=2.6
+torchvision
+transformers>=4.44
+huggingface_hub
+safetensors
+numpy
+scipy
+h5py
+rasterio
+opencv-python-headless
+pillow
+imageio
+matplotlib
+omegaconf
+tqdm

@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -N dw_sundegen
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=32gb
+#PBS -l walltime=01:00:00
+#PBS -o logs/sundegen.out
+#PBS -j oe
+#
+# Diagnoses the cached sun angles before A6 reaches the front of the ladder.
+# Read-only: touches nothing the ladder uses.  _common.sh picks the least-used GPU,
+# so this runs beside the ladder rather than contending with it.
+#
+# Two passes.  estimate_sun.py fitted the cache with max_dist_px=150; the loss will
+# consume it with configs/base.yaml's 200.  If the elevation curves differ between the
+# passes, that mismatch is biasing the fitted elevation and the cache should be rebuilt
+# at the value the loss actually uses.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+for D in 150 200; do
+  echo
+  echo "############################################################"
+  echo "### pass max_dist_px=${D}"
+  echo "############################################################"
+  python scripts/check_sun_degeneracy.py \
+      --root "$DATA_ROOT/GAMUS" \
+      --cache "$DATA_ROOT/GAMUS/sun_angles.json" \
+      --splits train val \
+      --per-city 200 \
+      --gsd 0.33 \
+      --max-dist-px "$D" \
+      --device cuda \
+      --dump-iou "$DATA_ROOT/GAMUS/sun_iou_${D}.json"
+done

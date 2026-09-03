@@ -1,0 +1,12 @@
+_base_: a7_vitl.yaml
+# Held-out-city evaluation of the BEST model, not of the A5 recipe.  A7 (ViT-L) beat
+# every ViT-S config by 12-16%, several times the ~4% band the ViT-S ladder sits in, so
+# this is the number section 9 says to lead with.
+#
+# init_from stays EMPTY on purpose, and must.  A7 trained on the official split, which
+# puts NYC in train -- warm-starting a NYC-holdout run from those weights would leak the
+# held-out city straight into the headline figure.  Held-out means trained on DC+PHL
+# only, from the pretrained backbone.
+out_dir: outputs/holdout_vitl
+data: {split_mode: city_holdout, holdout_cities: [NYC]}
+train: {init_from: ""}

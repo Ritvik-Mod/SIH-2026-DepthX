@@ -1,0 +1,37 @@
+#!/bin/bash
+#PBS -N dw_rgn
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=64gb
+#PBS -l walltime=01:30:00
+#PBS -o logs/rgn.out
+#PBS -j oe
+#
+# Per-block relative gradient norm on two domains, to decide WHICH blocks to fine-tune
+# instead of arguing about it.  Nothing is trained; no checkpoint is written.
+#
+#   qsub hpc/24_rgnprobe.pbs
+#   qsub -v REF="DC PHL",SHIFT=NYC,TILES=128 hpc/24_rgnprobe.pbs
+#
+# NYC is the shifted domain because it is a domain shift we have ALREADY measured --
+# held-out NYC gave building MAE 1.585 with overall bias -2.02 m and r 0.93 -> 0.74.
+# It is a rehearsal for India using data already on this cluster.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+: "${CKPT:=outputs/a7_vitl/best.pt}"
+: "${REF:=DC PHL}"
+: "${SHIFT:=NYC}"
+: "${TILES:=128}"
+: "${BATCHES:=16}"
+: "${BATCH:=4}"
+
+python scripts/rgn_probe.py \
+    --ckpt "$CKPT" \
+    --root "$DATA_ROOT/GAMUS" \
+    --ref-cities $REF \
+    --shift-cities $SHIFT \
+    --splits val test \
+    --tiles "$TILES" \
+    --batches "$BATCHES" \
+    --batch "$BATCH" \
+    --device cuda \
+    --out outputs/rgn_probe.json

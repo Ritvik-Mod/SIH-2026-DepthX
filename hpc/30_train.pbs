@@ -1,0 +1,34 @@
+#!/bin/bash
+#PBS -N dw_train
+#PBS -q gpu
+#PBS -l select=1:ncpus=16:ngpus=1:mem=96gb
+#PBS -l walltime=24:00:00
+#PBS -l place=scatter:shared
+#PBS -o logs/train.out
+#PBS -j oe
+#PBS -m abe
+#
+# One ablation run.  Pass the config with -v:
+#   qsub -v CFG=configs/ablations/a2_bins.yaml hpc/30_train.pbs
+#
+# Walltime-safe: train.resume=auto continues from out_dir/last.pt, and the checkpoint is
+# written atomically, so a job killed at the limit loses at most one epoch.  Re-qsub the
+# SAME command to continue; it no-ops once the epoch count is reached.
+# EXTRA appends dotlist overrides, for sweeps that run one config at several seeds:
+#   qsub -v CFG=configs/finetune/f1_early.yaml,EXTRA="seed=2024 out_dir=outputs/f1_s2024"
+# It comes LAST so it wins over the defaults set here -- including out_dir, which
+# otherwise collides and two seeds would overwrite each other's checkpoints.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+: "${CFG:?pass -v CFG=configs/ablations/aN_xxx.yaml}"
+: "${EXTRA:=}"
+RUN=$(basename "$CFG" .yaml)
+
+python -m heightmap.train --config="$CFG" \
+    data.root="$DATA_ROOT/GAMUS" \
+    data.sun_cache="$DATA_ROOT/GAMUS/sun_angles.json" \
+    data.num_workers=14 \
+    out_dir="outputs/$RUN" \
+    train.resume=auto $EXTRA
+
+echo "=== $RUN finished at $(date) ==="
+tail -3 "outputs/$RUN/log.jsonl" 2>/dev/null || true

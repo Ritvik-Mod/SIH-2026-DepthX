@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -N dw_prepare
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -o logs/prepare.out
+#PBS -j oe
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+# Everything that must pass before a long run is queued.
+echo "=== dataset statistics (sets h_max, ignore_index, class balance) ==="
+python scripts/dataset_stats.py --root "$DATA_ROOT/GAMUS" --splits train val --out outputs/gamus_stats.json
+
+echo; echo "=== sanity: all 16 checks, on REAL data ==="
+python scripts/sanity.py --root "$DATA_ROOT/GAMUS" --sun "" --overfit-steps 250
+
+echo; echo "=== A0 zero-shot baseline (the number that justifies fine-tuning) ==="
+python scripts/zero_shot_eval.py --root "$DATA_ROOT/GAMUS" --split val --max-tiles 400 \
+    --checkpoint depth-anything/Depth-Anything-V2-Base-hf --out outputs/a0_zeroshot.json
+
+# Sun-angle estimation lives in its own job (21_sunangles.pbs): it is the long pole,
+# and only A6 consumes it, so A1-A5 must not wait behind it.
+
+echo; echo "=== 1-epoch timing probe: recalibrate every estimate from THIS number ==="
+python -m heightmap.train --config=configs/ablations/a1_regression.yaml \
+    data.root="$DATA_ROOT/GAMUS" train.epochs=1 out_dir=outputs/timing_probe 2>&1 | tail -25

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { classifyFiles, loadHeightmap, loadMetadata, loadTextureBitmap, resolvePixelSpacing } from '@/terrain3d/lib/load';
+import { classifyFiles, loadHeightmap, loadMetadata, loadTextureBitmap, resolvePixelSpacing } from '@/lib/load';
 
 export default function UploadPanel({ onReady }) {
   const inputRef = useRef(null);

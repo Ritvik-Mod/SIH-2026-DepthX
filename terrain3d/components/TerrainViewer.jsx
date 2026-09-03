@@ -10,8 +10,8 @@ import {
   sampleBilinear,
   sharpenHeights,
   suggestExaggeration,
-} from '@/terrain3d/lib/terrain';
-import { FlyController } from '@/terrain3d/lib/flyController';
+} from '@/lib/terrain';
+import { FlyController } from '@/lib/flyController';
 import ControlPanel from './ControlPanel';
 import Hud from './Hud';
 

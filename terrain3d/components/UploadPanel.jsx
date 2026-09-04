@@ -139,7 +139,7 @@ function PhotoMode({ onReady }) {
                       fontSize: 13, cursor: 'pointer' }}>
         <input type="checkbox" checked={autoDem} onChange={(e) => setAutoDem(e.target.checked)}
                style={{ width: 15, height: 15, flex: 'none', margin: 0 }} />
-        <span>Sit it on real terrain (DSM) <span className="muted">— georeferenced input only; ground follows the true land surface instead of being flat</span></span>
+        <span>Sit it on real terrain (DTM) <span className="muted">— georeferenced input only; ground follows the true land surface instead of being flat</span></span>
       </label>
 
       <button className="wide primary big" onClick={go} disabled={busy || !file}>

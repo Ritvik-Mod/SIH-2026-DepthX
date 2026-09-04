@@ -19,6 +19,8 @@ __pycache__/
 *.pth
 *.h5
 *.tif
+!final_test_files/
+!final_test_files/*.tif
 *.npy
 hf_cache/
 

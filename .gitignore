@@ -43,5 +43,10 @@ Icon?
 !/data/GAMUS_geotiff/
 !/data/GAMUS_geotiff/*.tif
 
+!/data/swisstopo/
+!/data/swisstopo/**/*.tif
+!/data/swisstopo/**/*.json
+!/data/swisstopo/README.md
+
 # ...but never the HuggingFace download cache inside it.
 /data/GAMUS/.cache/

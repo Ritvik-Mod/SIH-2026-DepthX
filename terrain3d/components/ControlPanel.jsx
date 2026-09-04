@@ -34,11 +34,18 @@ export default function ControlPanel(props) {
             <span>GSD</span>
             <b>{stats.pixelSpacing} m/px</b>
 
-            <span>AGL range</span>
-            <b>{stats.min.toFixed(2)} – {stats.max.toFixed(2)} m</b>
+            {/* The raster is AGL, a DSM or an rDSM depending on how it was made, and
+                they mean different things: AGL is height above the ground beneath you,
+                a DSM is elevation above sea level. Labelling a 22 m ground elevation
+                as "AGL" would read as a 22 m-tall street. */}
+            <span>{stats.quantity} range</span>
+            <b>
+              {stats.min.toFixed(2)} – {stats.max.toFixed(2)}
+              {stats.quantity === 'rDSM' ? '' : ' m'}
+            </b>
 
-            <span>Mean AGL</span>
-            <b>{stats.mean.toFixed(2)} m</b>
+            <span>Mean {stats.quantity}</span>
+            <b>{stats.mean.toFixed(2)}{stats.quantity === 'rDSM' ? '' : ' m'}</b>
 
             <span>Relief</span>
             <b>

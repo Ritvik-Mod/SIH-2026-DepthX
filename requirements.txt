@@ -13,3 +13,9 @@ imageio
 matplotlib
 omegaconf
 tqdm
+
+# serve/app.py only -- the inference HTTP service. Not needed for training or for the
+# command-line pipeline; install these on whatever machine hosts the demo.
+fastapi
+uvicorn
+python-multipart

@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -N dw_strat
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=64gb
+#PBS -l walltime=02:00:00
+#PBS -o logs/strat.out
+#PBS -j oe
+#
+# Landscape-stratified evaluation -- PS requirement #7, the largest scoring gap.
+# Nothing is trained.  Strata are cut from each tile's own class labels, so this
+# turns "sparse" and "forested" from unmeasured into numbers using data we already
+# have on disk.
+#
+#   qsub hpc/32_stratify.pbs
+#   qsub -v SPLIT=val,N=200 hpc/32_stratify.pbs
+#
+# Use a checkpoint the split is genuinely unseen for.  a7_vitl trained on the OFFICIAL
+# split, so its test partition is unseen and correct here; holdout_vitl is the one to
+# use if you want NYC held out as well.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+: "${CKPT:=outputs/a7_vitl/best.pt}"
+: "${SPLIT:=test}"
+: "${N:=400}"
+
+python scripts/stratify_eval.py \
+    --ckpt "$CKPT" \
+    --root "$DATA_ROOT/GAMUS" \
+    --split "$SPLIT" \
+    --n "$N" \
+    --device cuda \
+    --out "outputs/stratified_${SPLIT}.json" \
+    --dump "outputs/stratified_${SPLIT}.csv"

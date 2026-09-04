@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -N dw_decode
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=64gb
+#PBS -l walltime=00:40:00
+#PBS -o logs/decode.out
+#PBS -j oe
+#
+# Decode A7's EXISTING bin distribution with rules other than the expectation.
+# Nothing is trained, nothing is written -- same weights, one changed line, so the
+# only cost is 40 forward passes.
+#
+#   qsub hpc/29_decode.pbs
+#   qsub -v SPLIT=val,N=60 hpc/29_decode.pbs
+#
+# Read the two CONTROL lines before the table.  If |mode - mean| at true edges is
+# small, p is unimodal exactly where the bins were supposed to stay bimodal, and no
+# decode rule can help -- which is an answer, not a failure.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+: "${CKPT:=outputs/a7_vitl/best.pt}"
+: "${SPLIT:=test}"
+: "${N:=40}"
+
+# ~45 MB of bin logits per tile are held on the host for the sweep; N=40 is ~1.8 GB.
+python scripts/sharpen_4_decode.py \
+    --ckpt "$CKPT" \
+    --root "$DATA_ROOT/GAMUS" \
+    --split "$SPLIT" \
+    --n "$N" \
+    --device cuda

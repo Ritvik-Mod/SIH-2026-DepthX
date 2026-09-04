@@ -13,8 +13,10 @@ import {
   suggestExaggeration,
 } from '@/lib/terrain';
 import { FlyController } from '@/lib/flyController';
+import { probeWebGL } from '@/lib/webgl';
 import ControlPanel from './ControlPanel';
 import Hud from './Hud';
+import Fallback2D from './Fallback2D';
 
 const SKY = 0x9fc4e0;
 
@@ -38,6 +40,8 @@ export default function TerrainViewer({ dataset, onReset }) {
   const [sunAz, setSunAz] = useState(135);
   const [sunEl, setSunEl] = useState(45);
   const [busy, setBusy] = useState(true);
+  // non-null once WebGL has proved unavailable; switches the whole view to 2D
+  const [glError, setGlError] = useState(null);
   const [work, setWork] = useState(null);
   const [hud, setHud] = useState({
     fps: 0, alt: 0, ground: 0, x: 0, z: 0, trees: 0,
@@ -66,7 +70,30 @@ export default function TerrainViewer({ dataset, onReset }) {
   // ------------------------------------------------------------ init once
   useEffect(() => {
     const mount = mountRef.current;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    if (!mount) return;
+
+    // WebGL is not guaranteed. Hardware acceleration can be switched off, the
+    // GPU process can fail to start, and a VM or remote desktop may have no
+    // passthrough at all -- and recent Chrome no longer falls back to software
+    // rendering on its own. THREE.WebGLRenderer throws from its constructor in
+    // every one of those cases, and that throw used to escape React and blank
+    // the entire site, taking the upload form down with it. Detect it, and
+    // degrade to the 2D relief view instead.
+    const probe = probeWebGL();
+    if (!probe.ok) { setGlError(probe.reason); return; }
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    } catch (e) {
+      setGlError(e?.message || 'WebGL context creation failed.');
+      return;
+    }
+    // A GPU reset mid-session drops the context and the canvas silently freezes.
+    renderer.domElement.addEventListener('webglcontextlost', (ev) => {
+      ev.preventDefault();
+      setGlError('The WebGL context was lost (the GPU driver reset).');
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.shadowMap.enabled = true;
@@ -553,6 +580,10 @@ export default function TerrainViewer({ dataset, onReset }) {
     backdropFilter: 'blur(10px)',
     transition: 'all 120ms ease',
   });
+
+  if (glError) {
+    return <Fallback2D dataset={dataset} onReset={onReset} reason={glError} />;
+  }
 
   return (
     <div className="viewer">

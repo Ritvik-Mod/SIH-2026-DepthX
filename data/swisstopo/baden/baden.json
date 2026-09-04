@@ -1,0 +1,32 @@
+{
+  "name": "baden",
+  "lat": 47.473,
+  "lon": 8.308,
+  "crs": "EPSG:2056",
+  "gsd_m": 0.33,
+  "size_px": 1024,
+  "footprint_m": 337.9,
+  "vertical_datum": "LN02 (EPSG:5728, Swiss national levelling network)",
+  "products": {
+    "RGB": "SWISSIMAGE dop10 0.1 m",
+    "DSM": "swissSURFACE3D Raster 0.5 m",
+    "DTM": "swissALTI3D 0.5 m",
+    "AGL": "derived: DSM - DTM, clipped at 0"
+  },
+  "terrain": {
+    "relief_m": 95.56,
+    "mean_slope_deg": 12.54,
+    "built_fraction": 0.57,
+    "max_agl_m": 48.77
+  },
+  "licence": "swisstopo open government data; attribution required",
+  "note": "AGL is DSM - DTM from LiDAR, so it is ground truth, not a prediction.",
+  "agl_consistency": {
+    "identity": "DTM + AGL == DSM wherever DSM >= DTM; elsewhere AGL is clipped to 0",
+    "ground_agreement_p25_m": 0.1335,
+    "ground_agreement_note": "25th percentile of DSM-DTM; a robust stand-in for open ground. Near 0 means the two products agree there.",
+    "raw_diff_negative_fraction": 0.113,
+    "raw_diff_below_half_metre_fraction": 0.0251,
+    "max_clip_residual_m": 7.1987
+  }
+}

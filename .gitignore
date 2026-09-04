@@ -2,7 +2,6 @@ node_modules
 .next
 out
 .DS_Store
-=======
 # environments
 .venv/
 env/
@@ -13,7 +12,7 @@ __pycache__/
 # data and run artefacts — large, regenerable, or downloaded.
 # Anchored with a leading slash: a bare `data/` matches at ANY depth and would also
 # ignore the heightmap/data package, which is source code.
-/data/
+/data/*
 /outputs/
 /logs/
 *.pt
@@ -31,3 +30,18 @@ discover.out
 # macOS
 .DS_Store
 Icon?
+
+# --- shared with the team, deliberately committed -------------------------------
+# Two folders are exceptions to the /data/ rule above. Everything else under data/
+# stays ignored -- notably data/GAMUS_synthetic (265 MB of generated smoke-test
+# fixtures, rebuilt by scripts/make_synthetic.py in seconds and worthless in history).
+#
+# These negations must come AFTER the *.h5 and *.tif rules: git applies the last
+# matching pattern, so re-including the directory is not enough on its own.
+!/data/GAMUS/
+!/data/GAMUS/**/*.h5
+!/data/GAMUS_geotiff/
+!/data/GAMUS_geotiff/*.tif
+
+# ...but never the HuggingFace download cache inside it.
+/data/GAMUS/.cache/

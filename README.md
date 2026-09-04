@@ -141,3 +141,4 @@ tests/              test_data, test_model, test_shadow, test_metrics, test_infer
   to predict height above it; a tile that is entirely rooftop has to guess. Hence
   coarse-guided levelling in `infer.py`. 
   Deployment fix 1.
+  Deployment fix 2.

@@ -114,7 +114,7 @@ export default function ControlPanel(props) {
             </small>
           </label>
 
-          <label className="field">
+          {/* <label className="field">
             <span>
               Vertical exaggeration <b>{exag.toFixed(2)}x</b>
             </span>
@@ -131,7 +131,7 @@ export default function ControlPanel(props) {
             <small>
               Auto-set from this tile&apos;s relief. 1.00x is true metric scale.
             </small>
-          </label>
+          </label> */}
 
           <label className="field">
             <span>Mesh resolution</span>

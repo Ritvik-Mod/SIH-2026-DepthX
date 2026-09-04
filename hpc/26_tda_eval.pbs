@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -N dw_tda
+#PBS -q workq
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=06:00:00
+#PBS -o logs/tda.out
+#PBS -j oe
+#
+# Topology-aware refinement, evaluated against LiDAR on tiles the model NEVER
+# trained on.  CPU only -- no GPU, so it does not compete with training jobs.
+#
+#   qsub -v SPLIT=test hpc/26_tda_eval.pbs
+#
+# Everything measured so far was on TRAIN tiles, where the model was fitted and
+# its predictions are unusually good (building MAE 1.16 vs 1.585 held out).
+# There is less blur to remove there, so the accuracy/sharpness trade may well
+# look DIFFERENT here.  This job is the number that counts.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+: "${SPLIT:=test}"
+: "${PRED:=outputs/pred_export_${SPLIT}}"
+: "${GT:=outputs/gt_export_${SPLIT}}"
+: "${OUTDIR:=outputs/tda_eval_${SPLIT}}"
+
+mkdir -p "$OUTDIR"
+cd "${PBS_O_WORKDIR}/tda"
+
+echo "=== 0. self-test on synthetic data (no input files needed) ==="
+python validate_synthetic.py --seeds 3 || echo "  (non-fatal: dev harness only)"
+
+echo
+echo "=== 1. full ablation ladder ==="
+python evaluate_batch.py --pred-root "../$PRED" --gt-root "../$GT" \
+    --split "$SPLIT" --ablations A0 A1 A2 A3 A4 A5 FINAL --no-topology \
+    --out "../$OUTDIR/ladder.json"
+
+echo
+echo "=== 2. strength sweep: can we keep the sharpness and drop the cost? ==="
+# Measured on train tiles: ground-zeroing subtracts one global constant, which
+# helps ground pixels and hurts buildings (already biased low). Turning it off
+# halved the building-MAE cost while keeping the whole sharpness gain.
+for CFG in shipped nogz it20 it10 cap30; do
+  echo "--- $CFG ---"
+  ARG=""
+  [ "$CFG" != "shipped" ] && ARG="--config cfg_${CFG}.json"
+  python evaluate_batch.py --pred-root "../$PRED" --gt-root "../$GT" \
+      --split "$SPLIT" --ablations A0 FINAL --no-topology $ARG \
+      --out "../$OUTDIR/sweep_${CFG}.json"
+done
+
+echo
+echo "=== done -> $OUTDIR ==="
+ls -la "${PBS_O_WORKDIR}/$OUTDIR"

@@ -565,7 +565,8 @@ export default function TerrainViewer({ dataset, onReset }) {
           shadows, setShadows, sunAz, setSunAz, sunEl, setSunEl,
           replay, snapshot, onReset,
         }}
-        stats={{ width, height, min, max, mean, pixelSpacing, extentX, extentZ, nodataPixels }}
+        stats={{ width, height, min, max, mean, pixelSpacing, extentX, extentZ, nodataPixels,
+                 quantity: dataset?.metadata?.quantity || 'AGL' }}
       />
       {/* Feature toggles live here so ControlPanel.jsx stays untouched. */}
       <div

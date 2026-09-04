@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -N dw_pairs
+#PBS -q gpu
+#PBS -l select=1:ncpus=8:ngpus=1:mem=64gb
+#PBS -l walltime=04:00:00
+#PBS -o logs/pairs.out
+#PBS -j oe
+#
+# Export matched prediction / ground-truth bundles for one split, so anything
+# downstream (TDA refinement, calibration, the viewer) can be scored against
+# LiDAR on tiles the model never trained on.
+#
+#   qsub -v SPLIT=test hpc/27_export_pairs.pbs
+#   qsub -v SPLIT=val,CKPT=outputs/a7_vitl/best.pt hpc/27_export_pairs.pbs
+#
+# This MUST be a PBS job: the login node has no GPU, and `--device cuda` there
+# fails with "Found no NVIDIA driver". The GPU lives on rachel-gpu.
+#
+# The GT pass loads no model and runs in seconds; it exists so a renderer or a
+# post-process can be checked against truth through the IDENTICAL export path.
+# Without that control, every artefact gets blamed on the model.
+source "${PBS_O_WORKDIR}/hpc/_common.sh"
+
+: "${SPLIT:=test}"
+: "${CKPT:=outputs/a7_vitl_v0.1.0_release.pt}"
+: "${FROM:=outputs/demo12_${SPLIT}/compare.json}"
+: "${PRED_OUT:=outputs/pred_export_${SPLIT}}"
+: "${GT_OUT:=outputs/gt_export_${SPLIT}}"
+
+[ -f "$CKPT" ] || { echo "FATAL: checkpoint $CKPT not found"; exit 1; }
+[ -f "$FROM" ] || { echo "FATAL: tile list $FROM not found -- run hpc/23_demo12.pbs first"; exit 1; }
+
+echo "split=$SPLIT  ckpt=$CKPT"
+echo "tiles from $FROM: $(python -c "import json;print(len(json.load(open('$FROM'))))")"
+
+echo
+echo "=== 1/2  predictions (GPU) ==="
+python scripts/export_batch_threejs.py \
+    --source pred --ckpt "$CKPT" \
+    --root "$DATA_ROOT/GAMUS" --split "$SPLIT" \
+    --from-json "$FROM" --out "$PRED_OUT" --device cuda
+
+echo
+echo "=== 2/2  ground truth (no model) ==="
+python scripts/export_batch_threejs.py \
+    --source gt \
+    --root "$DATA_ROOT/GAMUS" --split "$SPLIT" \
+    --from-json "$FROM" --out "$GT_OUT"
+
+echo
+P=$(ls "$PRED_OUT" | grep -v manifest | wc -l)
+G=$(ls "$GT_OUT"   | grep -v manifest | wc -l)
+echo "=== exported  pred=$P  gt=$G ==="
+# A silent mismatch would make the evaluation run on a smaller set than intended
+# and nothing downstream would notice.
+[ "$P" = "$G" ] || echo "WARNING: counts differ -- some tiles failed to export"

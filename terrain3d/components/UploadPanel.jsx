@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { classifyFiles, loadHeightmap, loadMetadata, loadTextureBitmap, resolvePixelSpacing, sanityWarnings } from '@/lib/load';
-import { API_BASE, checkHealth, predictFromImage } from '@/lib/api';
+import { checkHealth, getApiBase, predictFromImage, setApiBase } from '@/lib/api';
 
 /**
  * Two ways in, one viewer.
@@ -46,16 +46,35 @@ function PhotoMode({ onReady }) {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [health, setHealth] = useState(null);
+  const [apiBase, setBase] = useState('');
+  const [editingApi, setEditingApi] = useState(false);
+  const [apiDraft, setApiDraft] = useState('');
 
-  useEffect(() => {
-    checkHealth().then(setHealth).catch(() => setHealth({ ok: false }));
+  const probe = useCallback(() => {
+    const b = getApiBase();
+    setBase(b);
+    setApiDraft(b);
+    setHealth(null);
+    checkHealth(b).then(setHealth).catch(() => setHealth({ ok: false }));
   }, []);
+
+  // getApiBase() reads window, so it can only run after mount -- calling it during
+  // render would differ between the server-rendered HTML and the browser and React
+  // would throw a hydration mismatch.
+  useEffect(() => { probe(); }, [probe]);
+
+  const saveApi = useCallback(() => {
+    setApiBase(apiDraft);
+    setEditingApi(false);
+    probe();
+  }, [apiDraft, probe]);
 
   const go = useCallback(async () => {
     if (!file) { setError('Pick an image first.'); return; }
     setError(''); setBusy(true);
     try {
       const out = await predictFromImage(file, {
+        base: apiBase || undefined,
         gsd: gsd ? parseFloat(gsd) : null,
         autoDem,
         // Ticking the box is a request to SEE the terrain, so render the DSM too.
@@ -81,7 +100,7 @@ function PhotoMode({ onReady }) {
     } finally {
       setBusy(false);
     }
-  }, [file, gsd, autoDem, onReady]);
+  }, [file, gsd, autoDem, apiBase, onReady]);
 
   return (
     <>
@@ -129,17 +148,47 @@ function PhotoMode({ onReady }) {
 
       {status && <p className="status">{status}</p>}
       {error && <p className="error">{error}</p>}
-      {health && !health.ok && (
+
+      {health && !health.ok && !editingApi && (
         <p className="error">
-          No inference service at <code>{API_BASE}</code>. Start it, or use “Load prepared files”.
+          No inference service at <code>{apiBase}</code>.{' '}
+          <a onClick={() => setEditingApi(true)} style={linkStyle}>Change address</a>{' '}
+          or use “Load prepared files”.
         </p>
       )}
-      {health?.ok && (
+      {health?.ok && !editingApi && (
         <p className="muted">
           {health.model_warm
             ? <>Service up · model warm on <code>{health.device}</code></>
             : <>Service up · model loads on the first request (~5 s)</>}
+          {' · '}
+          <a onClick={() => setEditingApi(true)} style={linkStyle}>change address</a>
         </p>
+      )}
+
+      {/* The backend address can change under us -- a free tunnel gets a new hostname
+          every restart -- and it is compiled into the build, so without this the fix
+          is a Vercel edit plus a redeploy. Set it here and this browser remembers. */}
+      {editingApi && (
+        <div className="field" style={{ marginTop: 10 }}>
+          <span>Model service address</span>
+          <input
+            type="text" value={apiDraft} spellCheck={false}
+            placeholder="https://something.trycloudflare.com"
+            onChange={(e) => setApiDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && saveApi()}
+          />
+          <small>
+            Saved in this browser only. Sharing the page with{' '}
+            <code>?api=&lt;address&gt;</code> points any browser at it without a redeploy.
+          </small>
+          <div className="row" style={{ marginTop: 8, gap: 8 }}>
+            <button className="seg on" onClick={saveApi}>Save &amp; test</button>
+            <button className="seg" onClick={() => { setApiDraft(apiBase); setEditingApi(false); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </>
   );
@@ -281,6 +330,8 @@ function FilesMode({ onReady }) {
     </>
   );
 }
+
+const linkStyle = { textDecoration: 'underline', cursor: 'pointer' };
 
 const tabsStyle = { display: 'flex', gap: 6, margin: '0 0 14px' };
 const tabStyle = (active) => ({

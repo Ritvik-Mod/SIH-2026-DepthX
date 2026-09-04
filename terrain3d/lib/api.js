@@ -14,13 +14,66 @@
  * backend is not on this machine). Without it we assume a local server on :8000.
  */
 
-export const API_BASE =
+const BUILD_TIME_BASE =
   process.env.NEXT_PUBLIC_DEPTHX_API?.replace(/\/$/, '') || 'http://localhost:8000';
 const TOKEN = process.env.NEXT_PUBLIC_DEPTHX_TOKEN || '';
+const STORE_KEY = 'depthx_api_base';
+
+const clean = (u) => (u || '').trim().replace(/\/$/, '');
+
+/**
+ * Where the model service lives, decided AT RUNTIME rather than at build time.
+ *
+ * NEXT_PUBLIC_* values are compiled into the JavaScript when Vercel builds, so a
+ * backend whose address changes -- a free Cloudflare quick tunnel gets a new hostname
+ * every restart -- would need an environment-variable edit and a full redeploy each
+ * time. That is a two-minute outage at the worst possible moment.
+ *
+ * Resolution order, first hit wins:
+ *   1. ?api=https://…   in the URL, which is also remembered for next time
+ *   2. whatever was remembered in this browser
+ *   3. the build-time NEXT_PUBLIC_DEPTHX_API
+ *   4. localhost:8000
+ *
+ * So when the tunnel changes you open the site once with ?api=<new url>, or paste it
+ * into the box on the upload card, and this browser keeps using it. Sharing that same
+ * ?api= link points anyone else's browser at it too, without touching Vercel.
+ *
+ * localStorage is per-browser and per-device, so it is a convenience, never the
+ * source of truth: the build-time value stays the sane default for a fresh visitor.
+ */
+export function getApiBase() {
+  if (typeof window === 'undefined') return BUILD_TIME_BASE;   // server render
+  try {
+    const q = clean(new URLSearchParams(window.location.search).get('api'));
+    if (q) {
+      try { window.localStorage.setItem(STORE_KEY, q); } catch {}
+      return q;
+    }
+    const saved = clean(window.localStorage.getItem(STORE_KEY));
+    if (saved) return saved;
+  } catch {
+    // private browsing, or storage disabled -- fall through to the built-in default
+  }
+  return BUILD_TIME_BASE;
+}
+
+/** Remember an override for this browser. Empty string clears it. */
+export function setApiBase(url) {
+  const v = clean(url);
+  try {
+    if (v) window.localStorage.setItem(STORE_KEY, v);
+    else window.localStorage.removeItem(STORE_KEY);
+  } catch {}
+  return v || BUILD_TIME_BASE;
+}
+
+export const API_BASE = BUILD_TIME_BASE;      // the default, for display only
+export const DEFAULT_API_BASE = BUILD_TIME_BASE;
 
 const headers = () => (TOKEN ? { 'X-DepthX-Token': TOKEN } : {});
 
-export async function checkHealth(base = API_BASE) {
+export async function checkHealth(base = getApiBase()) {
   const r = await fetch(`${base}/api/health`, { headers: headers() });
   if (!r.ok) throw new Error(`service returned ${r.status}`);
   return r.json();
@@ -32,7 +85,7 @@ export async function checkHealth(base = API_BASE) {
  * onProgress(text) is called at each step; the caller decides what to show.
  */
 export async function predictFromImage(file, {
-  base = API_BASE, gsd = null, autoDem = false, renderQuantity = 'agl',
+  base = getApiBase(), gsd = null, autoDem = false, renderQuantity = 'agl',
   onProgress = () => {}, pollMs = 1200, timeoutMs = 10 * 60 * 1000,
 } = {}) {
   const form = new FormData();

@@ -16,8 +16,9 @@
 
 const BUILD_TIME_BASE =
   process.env.NEXT_PUBLIC_DEPTHX_API?.replace(/\/$/, '') || 'http://localhost:8000';
-const TOKEN = process.env.NEXT_PUBLIC_DEPTHX_TOKEN || '';
+const BUILD_TIME_TOKEN = process.env.NEXT_PUBLIC_DEPTHX_TOKEN || '';
 const STORE_KEY = 'depthx_api_base';
+const TOKEN_KEY = 'depthx_api_token';
 
 const clean = (u) => (u || '').trim().replace(/\/$/, '');
 
@@ -68,15 +69,137 @@ export function setApiBase(url) {
   return v || BUILD_TIME_BASE;
 }
 
+/**
+ * The auth token, resolved AT RUNTIME, exactly like the base address above.
+ *
+ * serve/app.py's own docstring says to set DEPTHX_TOKEN before putting the
+ * service behind any tunnel -- which is correct advice, and it used to make the
+ * service unusable from a local dev server, because the token was read only
+ * from NEXT_PUBLIC_DEPTHX_TOKEN and that is compiled in at build time. The
+ * person running `next dev` against someone else's GPU box had no way to supply
+ * it short of a .env file and a restart.
+ *
+ *   ?token=…   in the URL, remembered for next time
+ *   whatever was remembered in this browser
+ *   the build-time NEXT_PUBLIC_DEPTHX_TOKEN
+ *
+ * A token in a URL is visible in history and in any screenshot of the address
+ * bar. That is an acceptable trade for a throwaway demo token on a tunnel that
+ * dies when the laptop closes -- it is not a way to carry a real secret.
+ */
+export function getApiToken() {
+  if (typeof window === 'undefined') return BUILD_TIME_TOKEN;
+  try {
+    const q = (new URLSearchParams(window.location.search).get('token') || '').trim();
+    if (q) {
+      try { window.localStorage.setItem(TOKEN_KEY, q); } catch {}
+      return q;
+    }
+    const saved = (window.localStorage.getItem(TOKEN_KEY) || '').trim();
+    if (saved) return saved;
+  } catch {
+    // storage disabled -- fall through
+  }
+  return BUILD_TIME_TOKEN;
+}
+
+export function setApiToken(token) {
+  const v = (token || '').trim();
+  try {
+    if (v) window.localStorage.setItem(TOKEN_KEY, v);
+    else window.localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+  return v;
+}
+
 export const API_BASE = BUILD_TIME_BASE;      // the default, for display only
 export const DEFAULT_API_BASE = BUILD_TIME_BASE;
 
-const headers = () => (TOKEN ? { 'X-DepthX-Token': TOKEN } : {});
+const headers = () => {
+  const t = getApiToken();
+  return t ? { 'X-DepthX-Token': t } : {};
+};
 
 export async function checkHealth(base = getApiBase()) {
   const r = await fetch(`${base}/api/health`, { headers: headers() });
   if (!r.ok) throw new Error(`service returned ${r.status}`);
   return r.json();
+}
+
+/**
+ * Why a failed request failed, in terms the person can act on.
+ *
+ * This exists because of one specific, repeated waste of an afternoon. A
+ * browser will not tell JavaScript whether a cross-origin fetch failed because
+ * the host was unreachable or because the response lacked an
+ * Access-Control-Allow-Origin header -- revealing the difference would leak
+ * whether a host exists, so both arrive as the same opaque
+ * `TypeError: Failed to fetch`. The UI then said "Failed to fetch", which reads
+ * as "the site is broken", when in fact the model was running perfectly and one
+ * environment variable on the other machine listed only the deployed origin.
+ *
+ * The discriminator is a second request in `no-cors` mode. That mode asks the
+ * browser not to enforce the CORS check and to hand back an opaque response, so
+ * it SUCCEEDS when a server answered and only the headers were missing, and it
+ * still THROWS when nothing is listening. It sends no custom headers -- no-cors
+ * forbids them -- which is fine, since all we need to know is whether anyone is
+ * home.
+ *
+ * Returns { ok, kind, ... } where kind is one of:
+ *   ok | mixed-content | auth | cors | http-error | unreachable
+ */
+export async function diagnoseApi(base = getApiBase()) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const b = clean(base);
+
+  // Checkable with no network at all: an https page may not fetch http.
+  if (typeof window !== 'undefined'
+      && window.location.protocol === 'https:'
+      && /^http:\/\//i.test(b)) {
+    return { ok: false, kind: 'mixed-content', base: b, origin };
+  }
+
+  try {
+    const r = await fetch(`${b}/api/health`, { headers: headers(), cache: 'no-store' });
+    if (r.ok) return { ok: true, kind: 'ok', base: b, origin, health: await r.json() };
+    if (r.status === 401) return { ok: false, kind: 'auth', base: b, origin };
+    return { ok: false, kind: 'http-error', status: r.status, base: b, origin };
+  } catch {
+    try {
+      await fetch(`${b}/api/health`, { mode: 'no-cors', cache: 'no-store' });
+      return { ok: false, kind: 'cors', base: b, origin };
+    } catch {
+      return { ok: false, kind: 'unreachable', base: b, origin };
+    }
+  }
+}
+
+/** One sentence naming the fix, for each diagnosis above. */
+export function explainDiagnosis(d) {
+  switch (d?.kind) {
+    case 'ok':
+      return null;
+    case 'mixed-content':
+      return `This page is served over https and the model service address is http, `
+        + `which browsers block outright. Use the https form of the address.`;
+    case 'auth':
+      return `The service is running but rejected the token. Paste the correct one below, `
+        + `or open this page with &token=<the token> in the URL.`;
+    case 'cors':
+      return `The service at ${d.base} is running and answered — it is just not allowing `
+        + `requests from ${d.origin}. On the machine running the model, restart it with `
+        + `this origin in the allow-list: DEPTHX_ORIGINS="${d.origin}" `
+        + `(comma-separate to keep the deployed site working too).`;
+    case 'http-error':
+      return `The service answered with HTTP ${d.status}. It is reachable, so the address `
+        + `is right, but that endpoint is not serving.`;
+    case 'unreachable':
+      return `Nothing answered at ${d.base}. A free trycloudflare tunnel gets a brand new `
+        + `hostname every restart, so an address that worked yesterday is usually just `
+        + `stale — ask for the current one. Meanwhile “Load prepared files” needs no service.`;
+    default:
+      return null;
+  }
 }
 
 /**

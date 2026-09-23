@@ -506,3 +506,39 @@ button:hover { border-color: rgba(255, 255, 255, 0.24); }
     max-height: 56vh;
   }
 }
+
+/* ------------------------------------------------- model service status card
+   The resolved API address is always visible, healthy or not: a stale tunnel
+   remembered in localStorage otherwise looks exactly like a working one, right
+   up until the upload fails with a message that names no cause. */
+
+.apiStatus {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+
+  margin-top: 14px;
+  padding: 9px 11px;
+
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.apiStatus > div { display: grid; gap: 2px; min-width: 0; }
+.apiStatus b { font-size: 12px; font-weight: 500; }
+.apiStatus small { color: var(--muted); font-size: 11px; word-break: break-all; }
+.apiStatus a { text-decoration: underline; cursor: pointer; }
+
+.apiDot {
+  width: 8px; height: 8px;
+  margin-top: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #3a444f;
+}
+.apiStatus.up   { border-color: rgba(95, 255, 160, 0.26); }
+.apiStatus.up   .apiDot { background: #4fe08a; box-shadow: 0 0 8px #4fe08a88; }
+.apiStatus.down { border-color: rgba(255, 128, 128, 0.3); }
+.apiStatus.down .apiDot { background: #ff8080; box-shadow: 0 0 8px #ff808088; }
+
+.apiWhy { margin: 8px 0 0; line-height: 1.5; }

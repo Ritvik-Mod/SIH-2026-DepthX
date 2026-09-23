@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { classifyFiles, loadHeightmap, loadMetadata, loadTextureBitmap, resolvePixelSpacing, sanityWarnings } from '@/lib/load';
-import { checkHealth, getApiBase, predictFromImage, setApiBase } from '@/lib/api';
+import {
+  diagnoseApi, explainDiagnosis, getApiBase, getApiToken,
+  predictFromImage, setApiBase, setApiToken,
+} from '@/lib/api';
 
 /**
  * Two ways in, one viewer.
@@ -45,17 +48,19 @@ function PhotoMode({ onReady }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [health, setHealth] = useState(null);
+  const [diag, setDiag] = useState(null);
   const [apiBase, setBase] = useState('');
   const [editingApi, setEditingApi] = useState(false);
   const [apiDraft, setApiDraft] = useState('');
+  const [tokenDraft, setTokenDraft] = useState('');
 
   const probe = useCallback(() => {
     const b = getApiBase();
     setBase(b);
     setApiDraft(b);
-    setHealth(null);
-    checkHealth(b).then(setHealth).catch(() => setHealth({ ok: false }));
+    setTokenDraft(getApiToken());
+    setDiag(null);
+    diagnoseApi(b).then(setDiag).catch(() => setDiag({ ok: false, kind: 'unreachable', base: b }));
   }, []);
 
   // getApiBase() reads window, so it can only run after mount -- calling it during
@@ -65,9 +70,10 @@ function PhotoMode({ onReady }) {
 
   const saveApi = useCallback(() => {
     setApiBase(apiDraft);
+    setApiToken(tokenDraft);
     setEditingApi(false);
     probe();
-  }, [apiDraft, probe]);
+  }, [apiDraft, tokenDraft, probe]);
 
   const go = useCallback(async () => {
     if (!file) { setError('Pick an image first.'); return; }
@@ -149,20 +155,34 @@ function PhotoMode({ onReady }) {
       {status && <p className="status">{status}</p>}
       {error && <p className="error">{error}</p>}
 
-      {health && !health.ok && !editingApi && (
-        <p className="error">
-          No inference service at <code>{apiBase}</code>.{' '}
-          <a onClick={() => setEditingApi(true)} style={linkStyle}>Change address</a>{' '}
-          or use “Load prepared files”.
-        </p>
+      {/* The resolved address is ALWAYS on screen, healthy or not. Without it,
+          a stale tunnel remembered in localStorage looks identical to a working
+          one right up until the upload fails. */}
+      {!editingApi && (
+        <div className={`apiStatus ${diag ? (diag.ok ? 'up' : 'down') : ''}`}>
+          <span className="apiDot" />
+          <div>
+            <b>
+              {!diag ? 'Checking the model service…'
+                : diag.ok
+                  ? (diag.health?.model_warm
+                      ? <>Service up · model warm on <code>{diag.health.device}</code></>
+                      : <>Service up · model loads on the first request (~5 s)</>)
+                  : 'Model service not usable from this page'}
+            </b>
+            <small>
+              <code>{apiBase}</code>{' · '}
+              <a onClick={() => setEditingApi(true)} style={linkStyle}>change</a>
+              {' · '}
+              <a onClick={probe} style={linkStyle}>retest</a>
+            </small>
+          </div>
+        </div>
       )}
-      {health?.ok && !editingApi && (
-        <p className="muted">
-          {health.model_warm
-            ? <>Service up · model warm on <code>{health.device}</code></>
-            : <>Service up · model loads on the first request (~5 s)</>}
-          {' · '}
-          <a onClick={() => setEditingApi(true)} style={linkStyle}>change address</a>
+
+      {diag && !diag.ok && !editingApi && (
+        <p className="error apiWhy">
+          {explainDiagnosis(diag)}
         </p>
       )}
 
@@ -182,6 +202,18 @@ function PhotoMode({ onReady }) {
             Saved in this browser only. Sharing the page with{' '}
             <code>?api=&lt;address&gt;</code> points any browser at it without a redeploy.
           </small>
+
+          <span style={{ marginTop: 10 }}>Token — only if the service sets DEPTHX_TOKEN</span>
+          <input
+            type="text" value={tokenDraft} spellCheck={false} placeholder="leave blank if unset"
+            onChange={(e) => setTokenDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && saveApi()}
+          />
+          <small>
+            Also settable as <code>?token=&lt;token&gt;</code> in the URL, alongside{' '}
+            <code>?api=</code>.
+          </small>
+
           <div className="row" style={{ marginTop: 8, gap: 8 }}>
             <button className="seg on" onClick={saveApi}>Save &amp; test</button>
             <button className="seg" onClick={() => { setApiDraft(apiBase); setEditingApi(false); }}>

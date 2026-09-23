@@ -52,3 +52,8 @@ Icon?
 
 # ...but never the HuggingFace download cache inside it.
 /data/GAMUS/.cache/
+
+# local service overrides -- NEXT_PUBLIC_DEPTHX_API / _TOKEN never get committed
+.env
+.env.local
+.env.*.local

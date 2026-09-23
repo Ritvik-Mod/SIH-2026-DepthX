@@ -35,8 +35,23 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 CKPT = os.environ.get("DEPTHX_CKPT", "outputs/a7_vitl/best.pt")
 JOBS_DIR = Path(os.environ.get("DEPTHX_JOBS", "outputs/jobs"))
 TOKEN = os.environ.get("DEPTHX_TOKEN")                       # unset = no auth
+# Browsers send an Origin header on every cross-site fetch and refuse the
+# RESPONSE unless it names that origin back. The default therefore has to cover
+# the ways this service is actually reached during development, because the
+# failure mode is invisible from the server side -- the request arrives, is
+# served, logs 200, and the browser then throws the answer away. Someone
+# debugging that from the front end sees only "Failed to fetch".
+#
+# "localhost" and "127.0.0.1" are DIFFERENT ORIGINS to a browser even though
+# they are the same machine, so both are listed. Set DEPTHX_ORIGINS explicitly
+# for anything public, and keep the local ones if a teammate is pointing
+# `next dev` at this box with ?api=<tunnel>.
+DEFAULT_ORIGINS = ",".join([
+    "http://localhost:3000", "http://127.0.0.1:3000",
+    "http://localhost:3001", "http://127.0.0.1:3001",
+])
 ORIGINS = [o.strip() for o in os.environ.get(
-    "DEPTHX_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+    "DEPTHX_ORIGINS", DEFAULT_ORIGINS).split(",") if o.strip()]
 MAX_MB = float(os.environ.get("DEPTHX_MAX_MB", "40"))
 MAX_PIXELS = int(os.environ.get("DEPTHX_MAX_PIXELS", str(6000 * 6000)))
 ALLOWED = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}

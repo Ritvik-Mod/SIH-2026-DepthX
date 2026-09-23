@@ -143,3 +143,4 @@ tests/              test_data, test_model, test_shadow, test_metrics, test_infer
   Deployment fix 1.
   Deployment fix 2.
   Deployment fix 3.
+  Deployment fix 4.

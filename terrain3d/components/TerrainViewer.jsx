@@ -14,11 +14,50 @@ import {
 } from '@/lib/terrain';
 import { FlyController } from '@/lib/flyController';
 import { probeWebGL } from '@/lib/webgl';
+import {
+  CYCLONE_CATEGORIES,
+  GUST_FACTOR,
+  SCENARIOS,
+  buildInventory,
+  computeQuakeDamage,
+  computeSpillMap,
+  computeWindDamage,
+  floodImpact,
+  hollandWind,
+  makeDamageTexture,
+  makeWaterTexture,
+  pgaFromMagnitude,
+} from '@/lib/disaster';
+import { DisasterFX } from '@/lib/disasterFx';
 import ControlPanel from './ControlPanel';
+import DisasterPanel from './DisasterPanel';
 import Hud from './Hud';
 import Fallback2D from './Fallback2D';
 
 const SKY = 0x9fc4e0;
+
+/**
+ * Where dust should billow from after a quake: the world-space centroid of
+ * every building that came down, with a radius from its own footprint so a
+ * warehouse raises a bigger cloud than a shopfront.
+ *
+ * The pixel -> world mapping here has to match the one the mesh was built
+ * with (see worldFromPixel in lib/terrain.js), or the dust rises next to the
+ * ruin rather than out of it.
+ */
+function collapseEmitters(inventory, width, height, extentX, extentZ) {
+  const out = [];
+  for (const b of inventory) {
+    if (!(b.damage >= 3)) continue;
+    out.push({
+      x: (b.cx / (width - 1) - 0.5) * extentX,
+      z: (b.cy / (height - 1) - 0.5) * extentZ,
+      base: b.base,
+      r: Math.max(4, Math.sqrt(b.areaM2) * 0.9),
+    });
+  }
+  return out;
+}
 
 export default function TerrainViewer({ dataset, onReset }) {
   const mountRef = useRef(null);
@@ -61,11 +100,30 @@ export default function TerrainViewer({ dataset, onReset }) {
   const [trees, setTrees] = useState(false);
   const [level, setLevel] = useState(true);
 
+  // ------------------------------------------------ disaster simulation
+  // Also opt-in, also display-only, and also incapable of touching `heights`.
+  // The whole feature is off until simOpen goes true, and closing it puts
+  // every uniform and every environment value back where it started.
+  const [simOpen, setSimOpen] = useState(false);
+  const [sim, setSim] = useState({ kind: null });
+  const [simReady, setSimReady] = useState(false);   // footprints available yet
+  const [simBusy, setSimBusy] = useState(false);
+  const [simProgress, setSimProgress] = useState(0);
+  const [simPlaying, setSimPlaying] = useState(false);
+  const [impact, setImpact] = useState(null);
+  // bumped when the analysis pass republishes footprints, so the inventory
+  // rebuilds without the scenario sliders being in that dependency list
+  const [siteVersion, setSiteVersion] = useState(0);
+
   // read by the analysis pass, which must not re-run when a toggle flips
   const optsRef = useRef({ trees: false, level: true, windows: true, edges: true });
   optsRef.current = { trees, level, windows, edges };
 
-  const analyse = windows || trees;
+  // The simulation needs the building footprints the analysis pass produces,
+  // so opening it is a third reason to run that pass -- but only the boolean
+  // is in the dependency list, never the scenario parameters, or every slider
+  // tick would re-segment the scene.
+  const analyse = windows || trees || simOpen;
 
   // ------------------------------------------------------------ init once
   useEffect(() => {
@@ -223,6 +281,14 @@ export default function TerrainViewer({ dataset, onReset }) {
       if (world.canopyDelta) {
         h -= sampleBilinear(world.canopyDelta, width, height, fx, fy);
       }
+      // The simulation lowers the RENDERED surface through the vertex shader.
+      // The floor follows the same array, scaled by the same animation amount,
+      // so a building that has come down is one you can walk over -- and one
+      // still standing is one you cannot walk through.
+      const d = world.disaster;
+      if (d && d.drop && d.surfaceAmount > 0) {
+        h -= sampleBilinear(d.drop, width, height, fx, fy) * d.surfaceAmount;
+      }
       return h * world.mesh.scale.y;
     };
 
@@ -271,6 +337,21 @@ export default function TerrainViewer({ dataset, onReset }) {
     };
     world.applyOptions = applyOptions;
 
+    // Built once and kept for the life of the scene. It is inert until a
+    // scenario is set: no water, no particles, no uniform is off its default.
+    world.disaster = new DisasterFX({
+      scene,
+      sun,
+      hemi,
+      extentX,
+      extentZ,
+      uniforms: material.userData.uniforms,
+      getTrees: () => world.treesGroup,
+      getScaleY: () => world.mesh.scale.y,
+      getLevelled: () => world.levelled,
+    });
+    world.disaster.setDatum(min);
+
     const onResize = () => {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
@@ -284,7 +365,14 @@ export default function TerrainViewer({ dataset, onReset }) {
     const loop = () => {
       world.raf = requestAnimationFrame(loop);
       const now = performance.now();
-      const dt = Math.min((now - last) / 1000, 0.1);
+      // Two clocks on purpose. `dt` is clamped so that a stall cannot teleport
+      // an animation across the scene in one step. `rawDt` is honest wall time,
+      // and the FPS readout has to use that one: accumulating the clamped
+      // value made the counter bottom out at ~10 and report 16 fps on a
+      // software renderer genuinely managing 0.3 -- which is a lie told
+      // exactly when the number matters most.
+      const rawDt = (now - last) / 1000;
+      const dt = Math.min(rawDt, 0.1);
       last = now;
 
       if (world.rise) {
@@ -299,10 +387,17 @@ export default function TerrainViewer({ dataset, onReset }) {
       if (world.fly.enabled) world.fly.update(dt);
       else world.orbit.update();
 
+      // After the controls have settled and before the draw: the shake is a
+      // render-time offset that is undone immediately afterwards, so neither
+      // OrbitControls' damping nor the fly controller ever sees a camera
+      // position it did not itself set.
+      world.disaster.update(dt, camera);
+      world.disaster.applyShake(camera);
       renderer.render(scene, camera);
+      world.disaster.clearShake(camera);
 
       world.frames++;
-      world.fpsClock += dt;
+      world.fpsClock += rawDt;
       if (world.fpsClock > 0.4) {
         const g = sampleGround(camera.position.x, camera.position.z);
         setHud({
@@ -327,6 +422,7 @@ export default function TerrainViewer({ dataset, onReset }) {
     return () => {
       cancelAnimationFrame(world.raf);
       window.removeEventListener('resize', onResize);
+      world.disaster.dispose();
       fly.dispose();
       orbit.dispose();
       world.mesh.geometry.dispose();
@@ -418,6 +514,9 @@ export default function TerrainViewer({ dataset, onReset }) {
       world.canopyDeltaData = null;
       world.canopyDeltaMax = 0;
       world.levelled = false;
+      world.site = null;
+      world.inventory = null;
+      world.spill = null;
       u.uSite.value = null;
       u.uCanopy.value = null;
       u.uSiteOn.value = 0;
@@ -469,8 +568,10 @@ export default function TerrainViewer({ dataset, onReset }) {
         world.canopyDeltaMax = r.deltaMax;
         u.uCanopy.value = r.maskTexture;
 
+        world.site = r.site;
         world.scene.add(r.group);
         world.applyOptions(optsRef.current);
+        setSiteVersion((v) => v + 1);
 
         console.log(
           '[scene]', r.stats.buildings, 'buildings ·',
@@ -550,6 +651,177 @@ export default function TerrainViewer({ dataset, onReset }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moveMode]);
 
+  /* ------------------------------------------- simulation: scene inventory
+   * Runs once per scene, not per slider. Two things are prepared here and
+   * both are expensive enough that doing them on a drag would be felt:
+   *
+   *   the building inventory -- height, storeys, footprint area and a stable
+   *   seed per detected structure, so damage is decided per BUILDING;
+   *
+   *   the spill field -- one Priority-Flood pass giving, for every cell, the
+   *   water level at which it first connects to the edge of the tile. After
+   *   this, any flood stage is a single comparison per cell, which is what
+   *   makes the stage slider free.
+   */
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world || !simOpen || !world.site || !work) return;
+
+    setSimReady(false);
+    let cancelled = false;
+
+    // A tick, so the panel paints "waiting for the analysis" before the main
+    // thread goes away for a few hundred milliseconds.
+    const id = setTimeout(() => {
+      if (cancelled) return;
+      const pxPerM = Math.min(width / extentX, height / extentZ);
+
+      world.inventory = buildInventory({
+        heights: work,
+        groundBase: world.site.groundBase,
+        buildingSeed: world.site.buildingSeed,
+        buildingBlobs: world.site.buildingBlobs,
+        width,
+        pxPerM,
+      });
+
+      const sp = computeSpillMap(work, width, height, { maxDim: 512 });
+      world.spill = sp;
+      world.disaster.setWaterField(
+        makeWaterTexture(sp.spill, sp.elev, sp.sw, sp.sh),
+        sp
+      );
+
+      console.log('[sim]', world.inventory.length, 'structures ·',
+        `${sp.sw}x${sp.sh} hydrology grid`);
+      setSimReady(true);
+    }, 24);
+
+    return () => { cancelled = true; clearTimeout(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simOpen, siteVersion, work, width, height, extentX, extentZ]);
+
+  /* ------------------------------------------------ simulation: scenario
+   * Cheap by comparison -- everything costly was cached above -- so this may
+   * re-run on every slider tick, behind a short debounce.
+   */
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world || !world.disaster) return;
+    const d = world.disaster;
+
+    if (!simOpen || !sim.kind || !simReady || !world.inventory) {
+      d.setScenario(null);
+      setImpact(null);
+      return;
+    }
+
+    setSimBusy(true);
+    let cancelled = false;
+
+    const id = setTimeout(() => {
+      if (cancelled) return;
+      try {
+        const pxPerM = Math.min(width / extentX, height / extentZ);
+        const inv = world.inventory;
+        let stats = null;
+        let stage = 0;
+        const params = { windDirDeg: sim.windDirDeg ?? 135 };
+
+        if (sim.kind === 'earthquake') {
+          const pga = pgaFromMagnitude(sim.magnitude, sim.distanceKm);
+          const r = computeQuakeDamage({
+            inventory: inv,
+            heights: work,
+            groundBase: world.site.groundBase,
+            width, height, pxPerM, pga,
+          });
+          d.setDamage(r.drop, makeDamageTexture(r.drop, r.state, width, height));
+          d.setEmitters(collapseEmitters(inv, width, height, extentX, extentZ));
+          d.setTargetStage(0);
+          params.pga = pga;
+          stats = r.stats;
+        } else if (sim.kind === 'flood') {
+          d.setDamage(null, null);
+          d.setEmitters([]);
+          stage = sim.stage;
+          d.setTargetStage(stage);
+          stats = floodImpact({
+            ...world.spill,
+            inventory: inv,
+            pixelSpacing,
+            level: min + stage,
+            datum: min,
+          });
+        } else if (sim.kind === 'cyclone') {
+          const cat = CYCLONE_CATEGORIES.find((c) => c.cat === sim.category)
+            || CYCLONE_CATEGORIES[2];
+          const sustained = hollandWind(cat.windMs, sim.eyeKm);
+          const r = computeWindDamage({
+            inventory: inv,
+            heights: work,
+            width, height,
+            sustainedMs: sustained,
+            windDirDeg: sim.windDirDeg,
+          });
+          d.setDamage(r.drop, makeDamageTexture(r.drop, r.state, width, height));
+          d.setEmitters([]);
+          // Surge scaled by the local wind rather than the category alone: a
+          // distant cat 5 does not push a 6 m wall of water onto this site.
+          stage = sim.surge
+            ? ((cat.surge[0] + cat.surge[1]) / 2) * Math.min(1, sustained / cat.windMs)
+            : 0;
+          d.setTargetStage(stage);
+          params.sustainedMs = sustained;
+          stats = {
+            ...r.stats,
+            flood: stage > 0
+              ? floodImpact({
+                  ...world.spill, inventory: inv, pixelSpacing,
+                  level: min + stage, datum: min,
+                })
+              : null,
+          };
+        }
+
+        d.setScenario(sim.kind, params, {
+          duration: SCENARIOS[sim.kind].defaults.duration,
+        });
+        setImpact(stats);
+      } catch (err) {
+        console.error('Disaster simulation failed:', err);
+        d.setScenario(null);
+        setImpact(null);
+      } finally {
+        setSimBusy(false);
+      }
+    }, 70);
+
+    return () => { cancelled = true; clearTimeout(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simOpen, simReady, sim, work, width, height, extentX, extentZ, pixelSpacing, min]);
+
+  /* The timeline lives in the render loop; this samples it for the panel at a
+     rate a human can read, rather than re-rendering React at 60 Hz. */
+  useEffect(() => {
+    if (!simOpen) { setSimProgress(0); setSimPlaying(false); return; }
+    const id = setInterval(() => {
+      const d = worldRef.current?.disaster;
+      if (!d) return;
+      setSimProgress(d.progress);
+      setSimPlaying(d.playing || d.settled);
+    }, 140);
+    return () => clearInterval(id);
+  }, [simOpen]);
+
+  const runSim = useCallback(() => { worldRef.current?.disaster?.play(); }, []);
+  const resetSim = useCallback(() => { worldRef.current?.disaster?.reset(); }, []);
+  const closeSim = useCallback(() => {
+    setSimOpen(false);
+    setSim({ kind: null });
+    setImpact(null);
+  }, []);
+
   const replay = useCallback(() => {
     const world = worldRef.current;
     if (!world) return;
@@ -613,7 +885,30 @@ export default function TerrainViewer({ dataset, onReset }) {
         {trees && (
           <button style={pill(level)} onClick={() => setLevel((v) => !v)}>LEVEL MOUNDS</button>
         )}
+        <button
+          style={{ ...pill(simOpen), borderColor: simOpen ? 'rgba(255,140,90,0.6)' : undefined,
+                   background: simOpen ? 'rgba(255,140,90,0.16)' : 'rgba(17,21,26,0.86)',
+                   color: simOpen ? '#ffb38c' : 'rgba(255,255,255,0.55)' }}
+          onClick={() => (simOpen ? closeSim() : setSimOpen(true))}
+        >
+          DISASTER
+        </button>
       </div>
+
+      {simOpen && (
+        <DisasterPanel
+          sim={sim}
+          setSim={setSim}
+          ready={simReady}
+          busy={simBusy}
+          impact={impact}
+          progress={simProgress}
+          playing={simPlaying}
+          onRun={runSim}
+          onReset={resetSim}
+          onClose={closeSim}
+        />
+      )}
 
       {showHud && <Hud hud={hud} mode={mode} trees={trees} />}
       {busy && (

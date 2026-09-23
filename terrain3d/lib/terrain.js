@@ -226,6 +226,19 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
     uCanopyTint: { value: new THREE.Color(0.11, 0.17, 0.09) },
     uSky: { value: new THREE.Color(0.62, 0.77, 0.88) }, // glass reflection
     uEdge: { value: 0.0 },        // roof-edge crease highlight
+
+    // --- disaster simulation (lib/disaster.js): same discipline, every gate
+    // starts at 0 and every use is written as an identity at 0, so a viewer
+    // that never opens the simulation panel renders exactly as it did before
+    // this block existed ---
+    uDamage: { value: null },     // R metres of surface change (signed), G damage state
+    uDamageOn: { value: 0.0 },    // doubles as the collapse animation amount
+    uRubble: { value: new THREE.Color(0.35, 0.32, 0.29) },
+    uWaterField: { value: null }, // R spill level, G ground elevation (metres)
+    uWaterOn: { value: 0.0 },
+    uWaterLevel: { value: 0.0 },
+    uWaterTint: { value: new THREE.Color(0.10, 0.16, 0.15) },
+    uWetness: { value: 0.0 },     // rain-soaked surfaces: darker and glossier
   };
 
   mat.onBeforeCompile = (shader) => {
@@ -239,6 +252,8 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
         uniform sampler2D uCanopy;
         uniform float uCanopyFlatten;
         uniform float uDeltaMax;
+        uniform sampler2D uDamage;
+        uniform float uDamageOn;
         uniform vec2 uExtent;
         varying vec3 vWPos;
         varying vec3 vVPos;
@@ -255,6 +270,17 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
           vec2 tFUv = vec2(transformed.x / uExtent.x + 0.5,
                            transformed.z / uExtent.y + 0.5);
           transformed.y -= texture2D(uCanopy, tFUv).g * uDeltaMax * uCanopyFlatten;
+        }
+        // Disaster damage, in raw metres for the same reason: mesh.scale.y is
+        // applied afterwards by the model matrix. Signed -- a positive value
+        // drops a collapsing roof, a negative one raises debris in the street.
+        // uDamageOn is the collapse animation amount, so this is also what
+        // makes a building come down over a couple of seconds rather than
+        // snapping to its rubble pile in one frame.
+        if (uDamageOn > 0.0) {
+          vec2 tDUv = vec2(transformed.x / uExtent.x + 0.5,
+                           transformed.z / uExtent.y + 0.5);
+          transformed.y -= texture2D(uDamage, tDUv).r * uDamageOn;
         }`
       )
       .replace(
@@ -287,6 +313,14 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
         uniform vec3 uCanopyTint;
         uniform vec3 uSky;
         uniform float uEdge;
+        uniform sampler2D uDamage;
+        uniform float uDamageOn;
+        uniform vec3 uRubble;
+        uniform sampler2D uWaterField;
+        uniform float uWaterOn;
+        uniform float uWaterLevel;
+        uniform vec3 uWaterTint;
+        uniform float uWetness;
         varying vec3 vWPos;
         varying vec3 vVPos;
         varying float vHNorm;
@@ -309,6 +343,13 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
         vec3 tGeoW = normalize(cross(dFdx(vWPos), dFdy(vWPos)));
         // ~57 to ~72 degrees: below that it is roof or ground, above it is wall
         float tWall = smoothstep(0.45, 0.72, 1.0 - abs(tGeoW.y));
+
+        // ---- disaster damage state (identity while uDamageOn is 0) ----
+        vec2 tWorldUv = vec2(vWPos.x / uExtent.x + 0.5, vWPos.z / uExtent.y + 0.5);
+        float tDmg = 0.0;
+        if (uDamageOn > 0.0) {
+          tDmg = clamp(texture2D(uDamage, tWorldUv).g, 0.0, 1.0) * uDamageOn;
+        }
 
         diffuseColor.rgb = mix(diffuseColor.rgb, tViridis(vHNorm), uColorMix);
 
@@ -336,7 +377,9 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
           // gated on the building channel, so detail can only land on
           // structures -- never on terrain cliffs or tree mounds. Fades with
           // uWall too, so the height-ramp and overlay views stay clean.
-          float tFace = tWall * tSite.g * uWall * uWindows;
+          // A wrecked building has no tidy window grid left to draw, so the
+          // facade detail fades out exactly as the damage fades in.
+          float tFace = tWall * tSite.g * uWall * uWindows * (1.0 - tDmg);
           if (tFace > 0.01) {
             float tBase = uGroundMin + tSite.r * uGroundSpan;
             float tSeed = tSite.b;
@@ -381,12 +424,50 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
         // screen-space derivative spikes there
         float tCrease = clamp(length(vec2(dFdx(tGeoW.y), dFdy(tGeoW.y))) * 1.6,
                               0.0, 1.0);
-        diffuseColor.rgb += tCrease * 0.055 * uEdge;`
+        diffuseColor.rgb += tCrease * 0.055 * uEdge;
+
+        // ---- rubble (identity while tDmg is 0) ----
+        // Broken concrete is pale, dusty and blotchy. The hash is on world XZ
+        // so the mottling belongs to the ground and does not crawl when the
+        // camera moves.
+        if (tDmg > 0.001) {
+          float tGrit = tHash(floor(vWPos.xz * 1.7));
+          vec3 tRub = uRubble * (0.82 + 0.36 * tGrit);
+          diffuseColor.rgb = mix(diffuseColor.rgb, tRub, tDmg * 0.82);
+        }
+
+        // ---- rain (identity while uWetness is 0) ----
+        // Wet surfaces are darker and much glossier; that reads as rain far
+        // more strongly than the raindrops themselves.
+        diffuseColor.rgb *= mix(1.0, 0.74, uWetness);
+
+        // ---- inundation (identity while uWaterOn is 0) ----
+        // Gated on the SPILL field, not just the level, so a courtyard the
+        // water cannot reach is not tinted as if it were under it.
+        if (uWaterOn > 0.5) {
+          float tSpill = texture2D(uWaterField, tWorldUv).r;
+          float tWet = 1.0 - smoothstep(uWaterLevel - 0.12, uWaterLevel + 0.12, tSpill);
+          // vLocalY is the DISPLACED surface in metres, so a roof that has
+          // just collapsed floods at its new height, not its old one.
+          float tHead = (uWaterLevel - vLocalY) * tWet;
+          if (tHead > 0.0) {
+            // Beer-Lambert again, matched to the water surface's own clarity.
+            float tAbsorb = exp(-tHead / 1.1);
+            diffuseColor.rgb = mix(uWaterTint, diffuseColor.rgb, 0.06 + tAbsorb * 0.86);
+          }
+          // Tide line: a damp band just above the waterline.
+          float tBand = (1.0 - smoothstep(0.0, 0.8, vLocalY - uWaterLevel))
+                      * step(uWaterLevel, vLocalY) * tWet;
+          diffuseColor.rgb *= mix(1.0, 0.68, tBand);
+        }`
       )
       .replace(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
-        roughnessFactor = mix(roughnessFactor, 0.16, tGlassAmt);`
+        roughnessFactor = mix(roughnessFactor, 0.16, tGlassAmt);
+        // Rubble is rough; rain-slicked surfaces are not. Both identities at 0.
+        roughnessFactor = mix(roughnessFactor, 1.0, tDmg * 0.5);
+        roughnessFactor = mix(roughnessFactor, 0.24, uWetness * 0.8);`
       )
       .replace(
         '#include <metalnessmap_fragment>',
@@ -421,6 +502,8 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
         uniform sampler2D uCanopy;
         uniform float uCanopyFlatten;
         uniform float uDeltaMax;
+        uniform sampler2D uDamage;
+        uniform float uDamageOn;
         uniform vec2 uExtent;`
       )
       .replace(
@@ -430,6 +513,13 @@ export function createTerrainMaterial({ map, maxHeight, extentX = 1, extentZ = 1
           vec2 tFUv = vec2(transformed.x / uExtent.x + 0.5,
                            transformed.z / uExtent.y + 0.5);
           transformed.y -= texture2D(uCanopy, tFUv).g * uDeltaMax * uCanopyFlatten;
+        }
+        // Same displacement as the visible surface, from the same uniforms --
+        // otherwise a levelled block goes on casting a tower's shadow.
+        if (uDamageOn > 0.0) {
+          vec2 tDUv = vec2(transformed.x / uExtent.x + 0.5,
+                           transformed.z / uExtent.y + 0.5);
+          transformed.y -= texture2D(uDamage, tDUv).r * uDamageOn;
         }`
       );
   };
@@ -2206,6 +2296,18 @@ export function planTreeClumps({
     buildingMask,
     buildingSeed,
 
+    /*
+     * The individual structures, each with its own pixel list.
+     *
+     * The mask alone cannot answer "how many buildings collapsed", and a
+     * simulation that damages pixels rather than buildings produces
+     * nonsense: half a block flattened and the other half untouched,
+     * because the draw happened per pixel. Exposing the components is
+     * purely additive -- labelComponents already computed them for the
+     * mask, so this costs nothing that was not already spent.
+     */
+    buildingBlobs: buildings.blobs,
+
     /* Ground level under each pixel, for aligning facade storeys. */
     groundBase: districtDetect,
 
@@ -2419,6 +2521,16 @@ export async function createTreeLayer({
   const scl = new THREE.Vector3();
   const tint = new THREE.Color();
 
+  /*
+   * Scratch objects, hoisted out of rebase(). It used to allocate a Vector3
+   * per instance per call, which was harmless when the only caller was the
+   * exaggeration slider -- but the wind animation calls it every frame, and
+   * 1400 fresh vectors at 60 Hz is a garbage-collection pause you can see.
+   */
+  const YAXIS = new THREE.Vector3(0, 1, 0);
+  const TILT_AXIS = new THREE.Vector3();
+  const TILT_Q = new THREE.Quaternion();
+
   for (let v = 0; v < 3; v++) {
     const list = buckets[v];
 
@@ -2451,12 +2563,51 @@ export async function createTreeLayer({
      * Re-seat every instance for a given vertical exaggeration. Height
      * follows the terrain's own Y stretch so canopy tops keep matching
      * the mound they replace; girth does not stretch with it.
+     *
+     * `wind` is optional and null by default, which is the original
+     * behaviour exactly. When the disaster layer supplies one, the same
+     * single code path also leans, thins and fells each tree -- deliberately
+     * here rather than in a second writer, because two places writing
+     * instance matrices would overwrite each other the moment the
+     * exaggeration slider moved during a storm.
      */
-    const rebase = (sy, levelled = true) => {
+    const rebase = (sy, levelled = true, wind = null) => {
       for (let i = 0; i < list.length; i++) {
         const s = list[i];
 
         const base = s.treeH / nominal;
+
+        let tilt = 0;
+        let girth = s.jitterXZ;
+        let stand = s.jitterY;
+
+        if (wind && wind.gust > 0) {
+          /* s.rot is already a stable per-tree hash; reuse it as the draw. */
+          const u = s.rot / (Math.PI * 2);
+          const u2 = (u * 7.13) % 1;
+
+          if (u2 < wind.downedP) {
+            /* Snapped or uprooted: over it goes, and it stays over. */
+            tilt = 1.35 + u * 0.2;
+            girth *= 0.85;
+          } else {
+            /*
+             * Static lean plus a travelling gust. The phase offset is a
+             * function of position along the wind vector, so the gust
+             * front crosses the canopy instead of every tree bowing in
+             * unison -- which is the tell of a fake wind.
+             */
+            const travel = (s.x * wind.dx + s.z * wind.dz) * 0.035;
+            const gustNow =
+              0.72 +
+              0.28 * Math.sin(wind.phase - travel) +
+              0.14 * Math.sin(wind.phase * 2.3 - travel * 1.7 + u * 6.3);
+            tilt = wind.lean * gustNow * (0.75 + u * 0.5);
+            /* Defoliation reads as a thinner crown. */
+            girth *= 1 - 0.38 * wind.defoliate * (0.6 + 0.4 * u);
+            stand *= 1 - 0.12 * wind.defoliate;
+          }
+        }
 
         pos.set(
           s.x,
@@ -2464,15 +2615,23 @@ export async function createTreeLayer({
           s.z
         );
 
-        quat.setFromAxisAngle(
-          new THREE.Vector3(0, 1, 0),
-          s.rot
-        );
+        quat.setFromAxisAngle(YAXIS, s.rot);
+
+        if (tilt > 0.001) {
+          /*
+           * Rotating about an axis perpendicular to the wind in the XZ
+           * plane sends the crown downwind. a = (dz, 0, -dx) is the axis
+           * for which a x up points along (dx, dz).
+           */
+          TILT_AXIS.set(wind.dz, 0, -wind.dx).normalize();
+          TILT_Q.setFromAxisAngle(TILT_AXIS, tilt);
+          quat.premultiply(TILT_Q);
+        }
 
         scl.set(
-          base * s.jitterXZ,
-          base * s.jitterY * sy,
-          base * s.jitterXZ
+          base * girth,
+          base * stand * sy,
+          base * girth
         );
 
         matrix.compose(pos, quat, scl);
@@ -2549,6 +2708,18 @@ export async function createTreeLayer({
      * see and what you can walk into must be the same surface.
      */
     flattenDelta: plan.flattenDelta,
+
+    /*
+     * Everything the disaster simulation needs to reason about individual
+     * structures. Passed straight through; nothing here is used by the
+     * vegetation layer itself.
+     */
+    site: {
+      buildingBlobs: plan.buildingBlobs,
+      buildingSeed: plan.buildingSeed,
+      buildingMask: plan.buildingMask,
+      groundBase: plan.groundBase,
+    },
 
     stats: {
       ...plan.stats,

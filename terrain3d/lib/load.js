@@ -207,3 +207,103 @@ export function sanityWarnings({ hm, bitmap, metadata, spacing }) {
   if (hm.max > 400) w.push(`Max height ${hm.max.toFixed(0)} m is unusually tall — check the units.`);
   return w;
 }
+
+/**
+ * Is this upload georeferenced? Decided in the browser, before anything is sent.
+ *
+ * The service already skips the DTM stage for an image with no georeferencing,
+ * so this is not a safety check -- it is so the page can SAY which of the two
+ * will happen before the user waits a minute to find out. Only the GeoTIFF
+ * header is read: fromBlob slices lazily, so a 40 MB file costs a few kB here.
+ *
+ * Georeferenced means a raster-to-model transform (tiepoint or matrix) AND a
+ * coordinate system. A TIFF with neither is just a picture that happens to be
+ * a TIFF, and PNG / JPEG cannot carry either.
+ */
+export async function probeGeoreference(file) {
+  if (!file) return null;
+  if (!/\.(tif|tiff)$/i.test(file.name)) {
+    return { georeferenced: false, reason: 'PNG and JPEG carry no georeferencing' };
+  }
+  try {
+    const { fromBlob } = await import('geotiff');
+    const image = await (await fromBlob(file)).getImage();
+    const fd = image.fileDirectory || {};
+    const keys = image.geoKeys || {};
+    const hasTransform = !!(fd.ModelTiepoint || fd.ModelTransformation);
+    const epsg = keys.ProjectedCSTypeGeoKey || keys.GeographicTypeGeoKey || null;
+    const hasCrs = !!epsg || Object.keys(keys).length > 0;
+    const scale = fd.ModelPixelScale ? Number(fd.ModelPixelScale[0]) : null;
+    return {
+      georeferenced: hasTransform && hasCrs,
+      crs: epsg && epsg !== 32767 ? `EPSG:${epsg}` : null,
+      // metres only for a projected CRS; degrees are not a pixel spacing
+      gsd: keys.ProjectedCSTypeGeoKey && scale > 1e-3 ? scale : null,
+      width: image.getWidth(),
+      height: image.getHeight(),
+      reason: hasTransform && hasCrs ? null : 'no coordinate reference in this TIFF',
+    };
+  } catch {
+    return { georeferenced: false, reason: 'could not read the TIFF header' };
+  }
+}
+
+/** Fetch with byte-level progress, so a 5 MB scene shows it is moving. */
+async function fetchWithProgress(url, onBytes) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url.split('/').pop()}: HTTP ${r.status}`);
+  if (!r.body || !onBytes) return r.blob();
+  const reader = r.body.getReader();
+  const chunks = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.byteLength;
+    onBytes(got);
+  }
+  return new Blob(chunks);
+}
+
+/**
+ * Open a precomputed sample scene: the same three files the service returns,
+ * served statically, run through exactly the loaders an upload goes through.
+ * Nothing about the viewer knows or cares that no model was called.
+ */
+export async function loadSample(sample, onProgress) {
+  const base = sample.base;
+  const total = sample.bytes || 0;
+  const got = { hm: 0, tex: 0 };
+  const report = () => {
+    const mb = (got.hm + got.tex) / 1e6;
+    onProgress?.(total ? `Downloading ${mb.toFixed(1)} / ${(total / 1e6).toFixed(1)} MB` : 'Downloading…');
+  };
+  report();
+
+  const [hmBlob, texBlob, metaRes] = await Promise.all([
+    fetchWithProgress(`${base}/heightmap.tif`, (n) => { got.hm = n; report(); }),
+    fetchWithProgress(`${base}/texture.jpg`, (n) => { got.tex = n; report(); }),
+    fetch(`${base}/metadata.json`),
+  ]);
+  const metadata = metaRes.ok ? await metaRes.json() : null;
+
+  const hm = await loadHeightmap(new File([hmBlob], 'heightmap.tif', { type: 'image/tiff' }), onProgress);
+  const bitmap = await loadTextureBitmap(new File([texBlob], 'texture.jpg', { type: 'image/jpeg' }), onProgress);
+  onProgress?.('Building mesh…');
+
+  return {
+    heights: hm.data,
+    width: hm.width,
+    height: hm.height,
+    min: hm.min,
+    max: hm.max,
+    mean: hm.mean,
+    nodataPixels: hm.nodataPixels,
+    pixelSpacing: hm.geoSpacing ?? resolvePixelSpacing(metadata),
+    bitmap,
+    metadata,
+    name: sample.name,
+    sampleId: sample.id,
+  };
+}

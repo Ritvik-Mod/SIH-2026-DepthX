@@ -1,8 +1,14 @@
 import './globals.css';
 
 export const metadata = {
-  title: '2D → 3D Terrain Viewer',
-  description: 'Interactive fly-through of a DSM reconstructed from a single overhead image',
+  title: 'DepthWizard · Team DepthX',
+  description:
+    'Single-image height estimation for SIH26175: one nadir satellite or aerial image in, '
+    + 'a metric height map and a navigable 3D scene out.',
+};
+
+export const viewport = {
+  themeColor: '#f5f6f8',
 };
 
 export default function RootLayout({ children }) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
@@ -15,7 +15,9 @@ import {
 import { FlyController } from '@/lib/flyController';
 import { probeWebGL } from '@/lib/webgl';
 import ControlPanel from './ControlPanel';
+import LayerBar from './LayerBar';
 import Hud from './Hud';
+import SourceImage from './SourceImage';
 import Fallback2D from './Fallback2D';
 
 const SKY = 0x9fc4e0;
@@ -24,12 +26,40 @@ export default function TerrainViewer({ dataset, onReset }) {
   const mountRef = useRef(null);
   const worldRef = useRef(null);
 
-  const { heights, width, height, min, max, mean, pixelSpacing, bitmap, nodataPixels } = dataset;
+  const {
+    heights: rawHeights, width, height, min, max, mean, pixelSpacing, bitmap, nodataPixels, metadata,
+  } = dataset;
   const extentX = width * pixelSpacing;
   const extentZ = height * pixelSpacing;
+  const quantity = metadata?.quantity || 'AGL';
+
+  // ---------------------------------------------------------------- datum
+  // Everything below renders RELATIVE TO THE SCENE'S LOWEST SURFACE.
+  //
+  // An AGL raster already has ground at ~0 m, but a DSM (DTM + AGL, the
+  // georeferenced path) sits at its true elevation -- a Sikkim tile spans
+  // ~1,500-1,700 m. The camera height, the orbit target, the fog, the plinth
+  // and the fly ceiling were all written as multiples of `max`, i.e. of
+  // ALTITUDE rather than RELIEF, so on a DSM the orbit target landed ~480 m
+  // underneath the terrain and the fog, tuned for a 300 m scene, dissolved the
+  // whole thing into sky colour. The pipeline's own metadata says it outright:
+  // "subtract min_height_m before rendering if your viewer expects 0 = ground".
+  //
+  // AGL tiles keep datum 0, so they render exactly as before. The shader only
+  // ever compares heights with other heights from this same array, so the
+  // shift is invisible to it; the HUD adds the datum back for display.
+  const datum = useMemo(() => (quantity === 'DSM' || min > 5 ? min : 0), [quantity, min]);
+  const heights = useMemo(
+    () => (datum ? rawHeights.map((v) => v - datum) : rawHeights),
+    [rawHeights, datum]
+  );
+  const relief = max - datum;   // top of the scene, render space
+  const floorH = min - datum;   // bottom of the scene, render space (0 for a DSM)
 
   const [mode, setMode] = useState('orbit');
-  const [exag, setExag] = useState(() => suggestExaggeration(max, extentX));
+  // A DSM is shown at true metric scale, which is what it always got before
+  // (suggestExaggeration on an absolute max of ~1,600 m always returned 1).
+  const [exag, setExag] = useState(() => (datum ? 1 : suggestExaggeration(relief, extentX)));
   const [segments, setSegments] = useState(1024);
   const [sharpen, setSharpen] = useState(1);
   const [flat, setFlat] = useState(true);
@@ -103,24 +133,40 @@ export default function TerrainViewer({ dataset, onReset }) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
+    // ---- framing, from the scene's own size rather than fixed numbers ----
+    const span = Math.max(extentX, extentZ);
+    // Unchanged for an ordinary urban tile (relief << extent). The cap only
+    // bites on mountain relief, where relief * 3.2 put the camera so high the
+    // scene became a speck at the bottom of the frame.
+    const camY = Math.min(relief * 3.2 + 70, relief + span * 0.9);
+    const target0 = new THREE.Vector3(0, relief * 0.3, 0);
+    const camPos0 = new THREE.Vector3(-extentX * 0.55, camY, extentZ * 0.7);
+    const frameDist = camPos0.distanceTo(target0);
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(SKY);
-    scene.fog = new THREE.FogExp2(SKY, 0.0016);
+    // Haze scaled to the framing distance: ~24% at the starting viewpoint for
+    // EVERY scene. The old fixed 0.0016 was right for a 338 m tile and swallowed
+    // anything much bigger -- at 1.7 km it is 99.9% fog, which reads as empty sky.
+    const fogDensity = Math.min(0.004, Math.max(0.00025, 0.53 / frameDist));
+    scene.fog = new THREE.FogExp2(SKY, fogDensity);
 
     const camera = new THREE.PerspectiveCamera(
       60,
       mount.clientWidth / mount.clientHeight,
       0.5,
-      6000
+      Math.max(6000, frameDist * 8)
     );
-    camera.position.set(-extentX * 0.55, max * 3.2 + 70, extentZ * 0.7);
+    camera.position.copy(camPos0);
 
     const orbit = new OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
     orbit.dampingFactor = 0.08;
     orbit.maxPolarAngle = Math.PI * 0.495;
-    orbit.target.set(0, max * 0.3, 0);
-    orbit.maxDistance = Math.max(extentX, extentZ) * 3;
+    orbit.target.copy(target0);
+    // Never smaller than the starting distance, or OrbitControls silently
+    // clamps the opening shot on the first update.
+    orbit.maxDistance = Math.max(span * 3, frameDist * 2);
 
     // The controller needs a floor. `getGroundHeight` is attached just below,
     // once sampleGround exists -- it reads the RENDERED surface (canopy levelling
@@ -133,7 +179,7 @@ export default function TerrainViewer({ dataset, onReset }) {
         minX: -extentX / 2 - margin, maxX: extentX / 2 + margin,
         minZ: -extentZ / 2 - margin, maxZ: extentZ / 2 + margin,
       },
-      maxAltitude: Math.max(600, max * 6 + Math.max(extentX, extentZ) * 1.5),
+      maxAltitude: Math.max(600, relief * 6 + span * 1.5),
     });
     fly.baseSpeed = Math.max(12, extentX / 18);
     fly.onModeChange = (m) => setMoveMode(m);
@@ -146,14 +192,16 @@ export default function TerrainViewer({ dataset, onReset }) {
     const sun = new THREE.DirectionalLight(0xfff4e0, 2.0);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    const s = Math.max(extentX, extentZ) * 0.62;
+    // Covers tall relief too: a low sun over a 400 m valley wall throws its
+    // shadow well outside the tile's horizontal footprint.
+    const s = Math.max(span, relief * 1.2) * 0.62;
     Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: s * 8 });
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.35;
     scene.add(sun);
     scene.add(sun.target);
 
-    const plinthH = Math.max(12, max * 0.5);
+    const plinthH = Math.max(12, relief * 0.5);
     // DoubleSide matters: if anything ever does put the camera inside this box,
     // single-sided walls disappear and the user is left in featureless fog with
     // no way to tell which way is up. With both sides drawn they at least see a
@@ -176,11 +224,11 @@ export default function TerrainViewer({ dataset, onReset }) {
     texture.needsUpdate = true;
 
     // grayscale height texture for the alignment self-check
-    const checkTexture = makeHeightCheckTexture(heights, width, height, min, max);
+    const checkTexture = makeHeightCheckTexture(heights, width, height, floorH, relief);
 
     // extents let the shader sample the site / canopy masks from world XZ
     const material = createTerrainMaterial({
-      map: texture, maxHeight: max, extentX, extentZ,
+      map: texture, maxHeight: relief, extentX, extentZ,
     });
     material.userData.uniforms.uSky.value.setHex(SKY);
 
@@ -280,6 +328,7 @@ export default function TerrainViewer({ dataset, onReset }) {
     };
     window.addEventListener('resize', onResize);
 
+    const fwd = new THREE.Vector3();
     let last = performance.now();
     const loop = () => {
       world.raf = requestAnimationFrame(loop);
@@ -296,6 +345,11 @@ export default function TerrainViewer({ dataset, onReset }) {
         if (k >= 1) world.rise = null;
       }
 
+      // Paused while the source-image modal covers the scene: redrawing a
+      // million-vertex terrain nobody can see only steals the frame budget the
+      // modal's own pan and zoom need to stay smooth.
+      if (world.paused) return;
+
       if (world.fly.enabled) world.fly.update(dt);
       else world.orbit.update();
 
@@ -305,13 +359,16 @@ export default function TerrainViewer({ dataset, onReset }) {
       world.fpsClock += dt;
       if (world.fpsClock > 0.4) {
         const g = sampleGround(camera.position.x, camera.position.z);
+        camera.getWorldDirection(fwd);
         setHud({
           fps: Math.round(world.frames / world.fpsClock),
-          alt: camera.position.y,
-          ground: g,
+          // Render space is relative to the datum; the readout is not.
+          alt: camera.position.y + datum,
+          ground: g + datum,
           agl: camera.position.y - g,
           x: camera.position.x,
           z: camera.position.z,
+          heading: Math.atan2(fwd.z, fwd.x),
           trees: world.treeCount,
           speed: world.fly.enabled ? world.fly.currentSpeed : 0,
           moveMode: world.fly.mode,
@@ -518,7 +575,7 @@ export default function TerrainViewer({ dataset, onReset }) {
   useEffect(() => {
     const world = worldRef.current;
     if (!world) return;
-    const r = Math.max(extentX, extentZ) * 1.4;
+    const r = Math.max(extentX, extentZ, relief) * 1.4;
     const az = (sunAz * Math.PI) / 180;
     const el = (sunEl * Math.PI) / 180;
     world.sun.position.set(
@@ -563,23 +620,9 @@ export default function TerrainViewer({ dataset, onReset }) {
     world.renderer.render(world.scene, world.camera);
     const a = document.createElement('a');
     a.href = world.renderer.domElement.toDataURL('image/png');
-    a.download = 'terrain3d.png';
+    a.download = `depthwizard-${dataset?.sampleId || 'scene'}.png`;
     a.click();
   }, []);
-
-  const pill = (on) => ({
-    padding: '5px 11px',
-    borderRadius: 999,
-    fontSize: 11,
-    cursor: 'pointer',
-    fontFamily: 'ui-monospace, monospace',
-    letterSpacing: '0.03em',
-    border: `1px solid ${on ? 'rgba(95,178,255,0.55)' : 'rgba(255,255,255,0.12)'}`,
-    background: on ? 'rgba(95,178,255,0.16)' : 'rgba(17,21,26,0.86)',
-    color: on ? '#8ecbff' : 'rgba(255,255,255,0.55)',
-    backdropFilter: 'blur(10px)',
-    transition: 'all 120ms ease',
-  });
 
   if (glError) {
     return <Fallback2D dataset={dataset} onReset={onReset} reason={glError} />;
@@ -588,6 +631,7 @@ export default function TerrainViewer({ dataset, onReset }) {
   return (
     <div className="viewer">
       <div ref={mountRef} className="canvasMount" />
+
       <ControlPanel
         {...{
           mode, setMode, exag, setExag, segments, setSegments,
@@ -596,38 +640,37 @@ export default function TerrainViewer({ dataset, onReset }) {
           shadows, setShadows, sunAz, setSunAz, sunEl, setSunEl,
           replay, snapshot, onReset,
         }}
+        sceneName={dataset?.name}
         stats={{ width, height, min, max, mean, pixelSpacing, extentX, extentZ, nodataPixels,
-                 quantity: dataset?.metadata?.quantity || 'AGL' }}
+                 quantity, relief: max - min, datum,
+                 georeferenced: !!metadata?.georeferenced, crs: metadata?.crs || null }}
       />
-      {/* Feature toggles live here so ControlPanel.jsx stays untouched. */}
-      <div
-        style={{
-          position: 'absolute', bottom: 16, left: 16, zIndex: 5,
-          display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 340,
-        }}
-      >
-        <button style={pill(showHud)} onClick={() => setShowHud((v) => !v)}>HUD</button>
-        <button style={pill(windows)} onClick={() => setWindows((v) => !v)}>WINDOWS</button>
-        <button style={pill(edges)} onClick={() => setEdges((v) => !v)}>EDGES</button>
-        <button style={pill(trees)} onClick={() => setTrees((v) => !v)}>TREES</button>
-        {trees && (
-          <button style={pill(level)} onClick={() => setLevel((v) => !v)}>LEVEL MOUNDS</button>
-        )}
-      </div>
+
+      {/* Scene layers. These used to be a row of pills in the bottom-left
+          corner, under the help text and easy to miss; they are the toggles
+          people reach for most, so they sit top-centre where the eye lands. */}
+      <LayerBar
+        {...{ showHud, setShowHud, windows, setWindows, edges, setEdges,
+              trees, setTrees, level, setLevel }}
+      />
 
       {showHud && <Hud hud={hud} mode={mode} trees={trees} />}
-      {busy && (
-        <div
-          style={{
-            position: 'absolute', bottom: 52, left: '50%', transform: 'translateX(-50%)',
-            padding: '7px 14px', borderRadius: 999, fontSize: 11.5,
-            background: 'rgba(17,21,26,0.86)', border: '1px solid rgba(255,255,255,0.1)',
-            backdropFilter: 'blur(10px)', color: '#5fb2ff', fontFamily: 'ui-monospace, monospace',
-          }}
-        >
-          Sharpening edges…
-        </div>
-      )}
+
+      <SourceImage
+        bitmap={bitmap}
+        heights={rawHeights}
+        width={width}
+        height={height}
+        extentX={extentX}
+        extentZ={extentZ}
+        camera={hud}
+        name={dataset?.name}
+        quantity={quantity}
+        onOpenChange={(open) => { if (worldRef.current) worldRef.current.paused = open; }}
+        units={quantity === 'rDSM' ? '' : 'm'}
+      />
+
+      {busy && <div className="busyChip"><span className="spinner" />Sharpening edges</div>}
     </div>
   );
 }

@@ -52,3 +52,7 @@ Icon?
 
 # ...but never the HuggingFace download cache inside it.
 /data/GAMUS/.cache/
+
+# Precomputed demo scenes served by the viewer (scripts/package_samples.py).
+# ~15 MB in total; the *.tif rule above would otherwise drop the height rasters.
+!terrain3d/public/samples/**/*.tif

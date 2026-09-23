@@ -1,0 +1,59 @@
+{
+  "quantity": "AGL",
+  "quantity_note": "height above LOCAL GROUND, in metres. Ground is 0. DSM = DTM + this.",
+  "units": "metres",
+  "min_height_m": 0.109375,
+  "max_height_m": 19.921875,
+  "mean_height_m": 3.1786489486694336,
+  "resolution": {
+    "width": 1024,
+    "height": 1024
+  },
+  "pixel_spacing_m": 0.33,
+  "ground_extent_m": {
+    "width": 337.92,
+    "height": 337.92
+  },
+  "geotiff_dtype": "float32",
+  "nodata": -9999.0,
+  "nodata_pixels": 0,
+  "georeferenced": false,
+  "crs": null,
+  "note": "heightmap.tif holds real values -- do NOT denormalise against these numbers. heightmap_preview.png IS normalised and is not a data source.",
+  "texture_match": "already matched",
+  "source_image": "input.png",
+  "terrain": null,
+  "produced_by": {
+    "model": "HeightNet",
+    "checkpoint": "/Users/ritvikmod/Desktop/sih 2026/a7_vitl_v0.1.0.pt",
+    "backbone": "depth-anything/Depth-Anything-V2-Large-hf",
+    "head": "bins"
+  },
+  "inference": {
+    "tile": 518,
+    "overlap": 0.25,
+    "stride": 389,
+    "tta": false,
+    "levelled": true,
+    "n_tiles": 9,
+    "gsd_m": 0.33,
+    "scene": [
+      1024,
+      1024
+    ]
+  },
+  "scale_is_assumed": true,
+  "assumed_gsd_m": 0.33,
+  "scale_note": "The input carried no georeferencing. These metres are conditional on an ASSUMED 0.33 m/px and are valid for rendering and for relative comparison, not as measured elevations. The unconditional product is raw/input.tif (quantity rDSM).",
+  "sample": {
+    "note": "Precomputed demo scene. Re-encoded for the web: see scripts/package_samples.py.",
+    "source_image": "07_nongeo_nyc_rowhouses.png",
+    "original_resolution": {
+      "width": 1024,
+      "height": 1024
+    },
+    "downsampled": false,
+    "height_quantum_m": 0.0078125,
+    "texture": "JPEG q90"
+  }
+}

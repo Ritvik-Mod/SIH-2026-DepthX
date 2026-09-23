@@ -1,0 +1,69 @@
+{
+  "quantity": "DSM",
+  "quantity_note": "elevation of the visible surface above the DEM's vertical datum. The whole scene sits at its true elevation; subtract min_height_m before rendering if your viewer expects 0 = ground.",
+  "units": "metres",
+  "min_height_m": 434.125,
+  "max_height_m": 547.015625,
+  "mean_height_m": 468.0563049316406,
+  "resolution": {
+    "width": 1024,
+    "height": 1024
+  },
+  "pixel_spacing_m": 0.33,
+  "ground_extent_m": {
+    "width": 337.92,
+    "height": 337.92
+  },
+  "geotiff_dtype": "float32",
+  "nodata": -9999.0,
+  "nodata_pixels": 0,
+  "georeferenced": true,
+  "crs": "EPSG:2056",
+  "note": "heightmap.tif holds real values -- do NOT denormalise against these numbers. heightmap_preview.png IS normalised and is not a data source.",
+  "texture_match": "already matched",
+  "source_image": "input.tif",
+  "terrain": {
+    "dtm_source": "dem_file",
+    "dem_path": "outputs/jobs/5cb241385d3c/dem.tif",
+    "dem_pixel_size_m": 30.922,
+    "resampling": "cubic",
+    "vertical_datum_declared_by_dem": "EGM2008",
+    "method": "morphological opening, 120 m window",
+    "window_px": 5,
+    "window_m": 154.61,
+    "mean_height_removed_m": 0.788
+  },
+  "produced_by": {
+    "model": "HeightNet",
+    "checkpoint": "/Users/ritvikmod/Desktop/sih 2026/a7_vitl_v0.1.0.pt",
+    "backbone": "depth-anything/Depth-Anything-V2-Large-hf",
+    "head": "bins"
+  },
+  "inference": {
+    "tile": 518,
+    "overlap": 0.25,
+    "stride": 389,
+    "tta": false,
+    "levelled": true,
+    "n_tiles": 9,
+    "gsd_m": 0.33,
+    "scene": [
+      1024,
+      1024
+    ]
+  },
+  "scale_is_assumed": false,
+  "assumed_gsd_m": null,
+  "scale_note": null,
+  "sample": {
+    "note": "Precomputed demo scene. Re-encoded for the web: see scripts/package_samples.py.",
+    "source_image": "05_geo_swiss_hillside_gsd0.33.tif",
+    "original_resolution": {
+      "width": 1024,
+      "height": 1024
+    },
+    "downsampled": false,
+    "height_quantum_m": 0.0078125,
+    "texture": "JPEG q90"
+  }
+}

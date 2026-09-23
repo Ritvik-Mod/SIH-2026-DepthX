@@ -1,0 +1,59 @@
+{
+  "quantity": "AGL",
+  "quantity_note": "height above LOCAL GROUND, in metres. Ground is 0. DSM = DTM + this.",
+  "units": "metres",
+  "min_height_m": 0.0,
+  "max_height_m": 36.9921875,
+  "mean_height_m": 9.943399429321289,
+  "resolution": {
+    "width": 1279,
+    "height": 1600
+  },
+  "pixel_spacing_m": 0.33,
+  "ground_extent_m": {
+    "width": 422.07,
+    "height": 528.0
+  },
+  "geotiff_dtype": "float32",
+  "nodata": -9999.0,
+  "nodata_pixels": 0,
+  "georeferenced": false,
+  "crs": null,
+  "note": "heightmap.tif holds real values -- do NOT denormalise against these numbers. heightmap_preview.png IS normalised and is not a data source.",
+  "texture_match": "already matched",
+  "source_image": "input.jpeg",
+  "terrain": null,
+  "produced_by": {
+    "model": "HeightNet",
+    "checkpoint": "/Users/ritvikmod/Desktop/sih 2026/a7_vitl_v0.1.0.pt",
+    "backbone": "depth-anything/Depth-Anything-V2-Large-hf",
+    "head": "bins"
+  },
+  "inference": {
+    "tile": 518,
+    "overlap": 0.25,
+    "stride": 389,
+    "tta": false,
+    "levelled": true,
+    "n_tiles": 12,
+    "gsd_m": 0.33,
+    "scene": [
+      1600,
+      1279
+    ]
+  },
+  "scale_is_assumed": true,
+  "assumed_gsd_m": 0.33,
+  "scale_note": "The input carried no georeferencing. These metres are conditional on an ASSUMED 0.33 m/px and are valid for rendering and for relative comparison, not as measured elevations. The unconditional product is raw/input.tif (quantity rDSM).",
+  "sample": {
+    "note": "Precomputed demo scene. Re-encoded for the web: see scripts/package_samples.py.",
+    "source_image": "06_nongeo_india_dense_urban.jpeg",
+    "original_resolution": {
+      "width": 1279,
+      "height": 1600
+    },
+    "downsampled": false,
+    "height_quantum_m": 0.0078125,
+    "texture": "JPEG q90"
+  }
+}

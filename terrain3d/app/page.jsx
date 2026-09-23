@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import UploadPanel from '@/components/UploadPanel';
+import Home from '@/components/Home';
 import TerrainViewer from '@/components/TerrainViewer';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import Fallback2D from '@/components/Fallback2D';
@@ -28,7 +28,7 @@ export default function Page() {
     )
     : (
       <ErrorBoundary>
-        <UploadPanel onReady={setDataset} />
+        <Home onReady={setDataset} />
       </ErrorBoundary>
     );
 }

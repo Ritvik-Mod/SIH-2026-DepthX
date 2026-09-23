@@ -1,86 +1,75 @@
 'use client';
 
 /**
- * Read-outs and the contextual help line.
+ * Telemetry and the contextual help line.
  *
  * AGL is the number that matters while flying: it is the camera's height above
  * the RENDERED surface, so it goes to ~2 m and stops when the collision floor
  * catches you. If it ever reads negative, the floor has failed and that is a
  * bug worth reporting -- it should not be reachable.
  */
+function Row({ label, value, unit, tone }) {
+  return (
+    <div className="hudRow">
+      <span>{label}</span>
+      <b className={tone || ''}>
+        {value}
+        {unit && <small>{unit}</small>}
+      </b>
+    </div>
+  );
+}
+
 export default function Hud({ hud, mode, trees = false }) {
   const flying = mode === 'fly' || mode === 'walk';
   const walking = hud.moveMode === 'walk';
+  const agl = hud.agl ?? hud.alt - hud.ground;
 
   const help = !flying
-    ? 'Drag to orbit · Scroll to zoom · Right-drag to pan · switch to Fly or Walk for a first-person pass'
+    ? 'Drag to orbit · Scroll to zoom · Right-drag to pan · Fly or Walk for first person'
     : hud.locked
       ? (walking
-          ? 'W A S D walk · Space jump · Shift sprint · Alt slow · Scroll speed · F to fly · R recover · Esc release'
-          : 'W A S D move · Space / Ctrl altitude · Shift sprint · Alt slow · Scroll speed · F to walk · R recover · Esc release')
+          ? 'WASD walk · Space jump · Shift sprint · Alt slow · F fly · R recover · Esc release'
+          : 'WASD move · Space / Ctrl altitude · Shift sprint · Alt slow · F walk · R recover · Esc release')
       : 'Click the scene to capture the mouse';
 
   return (
     <>
-      <div className="hud">
-        <div><span>FPS</span><b>{hud.fps}</b></div>
-        <div><span>CAM ALT</span><b>{hud.alt.toFixed(1)} m</b></div>
-        <div><span>SURFACE</span><b>{hud.ground.toFixed(1)} m</b></div>
-        <div>
-          <span>AGL</span>
-          <b style={{ color: hud.agl < 0 ? '#ff6b6b' : undefined }}>
-            {(hud.agl ?? hud.alt - hud.ground).toFixed(1)} m
-          </b>
+      <div className="hud" aria-label="Telemetry">
+        <div className="hudHead">
+          <span className="liveDot" aria-hidden="true" />
+          <span>Telemetry</span>
+          <b>{hud.fps}<small> fps</small></b>
         </div>
-        <div><span>X / Z</span><b>{hud.x.toFixed(0)} / {hud.z.toFixed(0)}</b></div>
-        {flying && <div><span>SPEED</span><b>{(hud.speed ?? 0).toFixed(1)} m/s</b></div>}
+        <Row label="Camera" value={hud.alt.toFixed(1)} unit=" m" />
+        <Row label="Surface" value={hud.ground.toFixed(1)} unit=" m" />
+        <Row label="Above ground" value={agl.toFixed(1)} unit=" m" tone={agl < 0 ? 'bad' : ''} />
+        <Row label="X / Z" value={`${hud.x.toFixed(0)} / ${hud.z.toFixed(0)}`} unit=" m" />
+        {flying && <Row label="Speed" value={(hud.speed ?? 0).toFixed(1)} unit=" m/s" />}
         {flying && (
-          <div>
-            <span>MODE</span>
-            <b style={{ color: walking ? '#ffd479' : '#8ecbff' }}>
-              {walking ? (hud.grounded ? 'WALK' : 'FALL') : 'FLY'}
-            </b>
-          </div>
+          <Row
+            label="Mode"
+            value={walking ? (hud.grounded ? 'Walk' : 'Falling') : 'Fly'}
+            tone={walking ? 'warn' : 'accent'}
+          />
         )}
-        {trees && <div><span>TREES</span><b>{hud.trees ?? 0}</b></div>}
+        {trees && <Row label="Trees" value={(hud.trees ?? 0).toLocaleString()} />}
       </div>
 
-      <div className="help">{help}</div>
+      <div className="helpBar">{help}</div>
 
       {/* Pointer lock is not obvious to a first-time user, and without it the
           keys do nothing at all -- which reads as "the fly mode is broken". */}
       {flying && !hud.locked && (
-        <div
-          style={{
-            position: 'absolute', top: '50%', left: '50%',
-            transform: 'translate(-50%,-50%)', zIndex: 6, pointerEvents: 'none',
-            padding: '14px 22px', borderRadius: 12, textAlign: 'center',
-            background: 'rgba(17,21,26,0.9)', border: '1px solid rgba(95,178,255,0.4)',
-            backdropFilter: 'blur(10px)', color: '#8ecbff',
-            fontFamily: 'ui-monospace, monospace', fontSize: 13, letterSpacing: '0.04em',
-          }}
-        >
-          CLICK TO CAPTURE MOUSE
-          <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, marginTop: 6 }}>
-            Esc releases it again
-          </div>
+        <div className="lockPrompt">
+          <b>Click to capture the mouse</b>
+          <small>Esc releases it again</small>
         </div>
       )}
 
       {/* A centre reticle makes pitch legible; without one it is genuinely hard
           to tell level flight from a shallow dive over a flat tile. */}
-      {flying && hud.locked && (
-        <div
-          style={{
-            position: 'absolute', top: '50%', left: '50%',
-            transform: 'translate(-50%,-50%)', zIndex: 6, pointerEvents: 'none',
-            width: 14, height: 14, opacity: 0.5,
-          }}
-        >
-          <div style={{ position: 'absolute', left: 6, top: 0, width: 2, height: 14, background: '#fff' }} />
-          <div style={{ position: 'absolute', top: 6, left: 0, height: 2, width: 14, background: '#fff' }} />
-        </div>
-      )}
+      {flying && hud.locked && <div className="reticle" aria-hidden="true"><i /><i /></div>}
     </>
   );
 }

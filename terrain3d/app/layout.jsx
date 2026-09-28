@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 
 export const metadata = {
@@ -14,7 +15,12 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Page views and visitors, reported to the Vercel dashboard. Inert on
+            localhost and until Analytics is enabled for the project in Vercel. */}
+        <Analytics />
+      </body>
     </html>
   );
 }

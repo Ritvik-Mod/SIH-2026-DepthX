@@ -407,7 +407,7 @@ function SourceModal({
               <>
                 <span>X <b>{hover.x.toFixed(1)}</b> m</span>
                 <span>Z <b>{hover.z.toFixed(1)}</b> m</span>
-                <span>{hLabel} <b>{Number.isFinite(hover.h) ? hover.h.toFixed(2) : '—'}</b> {units}</span>
+                <span>{hLabel} <b>{Number.isFinite(hover.h) ? hover.h.toFixed(2) : 'n/a'}</b> {units}</span>
               </>
             ) : (
               <span className="muted">Scroll to zoom · drag to pan · double-click to zoom in · hover to read {hLabel.toLowerCase()}</span>

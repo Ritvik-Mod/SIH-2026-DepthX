@@ -641,6 +641,7 @@ export default function TerrainViewer({ dataset, onReset }) {
           replay, snapshot, onReset,
         }}
         sceneName={dataset?.name}
+        timing={dataset?.timing}
         stats={{ width, height, min, max, mean, pixelSpacing, extentX, extentZ, nodataPixels,
                  quantity, relief: max - min, datum,
                  georeferenced: !!metadata?.georeferenced, crs: metadata?.crs || null }}

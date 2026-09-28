@@ -87,7 +87,7 @@ function Switch({ label, hint, checked, onChange }) {
   );
 }
 
-const fmt = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '—');
+const fmt = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : 'n/a');
 
 /* --------------------------------------------------------------------- panel */
 
@@ -97,7 +97,7 @@ export default function ControlPanel(props) {
     sharpen, setSharpen, flat, setFlat, overlay, setOverlay,
     shading, setShading, wireframe, setWireframe,
     shadows, setShadows, sunAz, setSunAz, sunEl, setSunEl,
-    replay, snapshot, onReset, stats, sceneName,
+    replay, snapshot, onReset, stats, sceneName, timing,
   } = props;
 
   const [open, setOpen] = useState(true);
@@ -142,6 +142,24 @@ export default function ControlPanel(props) {
               : <span className="tag tagMuted">Not georeferenced</span>}
           </div>
         </div>
+
+        {timing && (
+          <Section title="Reconstruction">
+            <dl className="kv">
+              {timing.inference_s != null && (
+                <><dt>Model inference</dt><dd>{fmt(timing.inference_s)}<small> s</small></dd></>
+              )}
+              {timing.pipeline_s != null && (
+                <><dt>With terrain and files</dt><dd>{fmt(timing.pipeline_s)}<small> s</small></dd></>
+              )}
+              {timing.wait_s != null && (
+                <><dt>GPU start-up</dt>
+                  <dd>{timing.cold ? <>{fmt(timing.wait_s)}<small> s</small></> : <small>already warm</small>}</dd></>
+              )}
+              <dt>End to end</dt><dd>{fmt(timing.totalS)}<small> s</small></dd>
+            </dl>
+          </Section>
+        )}
 
         <Section title="Scene">
           <dl className="kv">
@@ -201,9 +219,9 @@ export default function ControlPanel(props) {
               value={segments}
               onChange={setSegments}
               options={[
-                { value: 256, label: '256', title: '66k vertices — fastest' },
+                { value: 256, label: '256', title: '66k vertices, fastest' },
                 { value: 512, label: '512', title: '263k vertices' },
-                { value: 1024, label: '1024', title: '1.05M vertices — full detail' },
+                { value: 1024, label: '1024', title: '1.05M vertices, full detail' },
               ]}
             />
           </div>
@@ -231,7 +249,7 @@ export default function ControlPanel(props) {
           {overlay && (
             <p className="hint">
               Every bright block should sit exactly on a raised block. If it is offset,
-              the texture orientation is wrong — not the geometry.
+              the texture orientation is wrong, not the geometry.
             </p>
           )}
         </Section>

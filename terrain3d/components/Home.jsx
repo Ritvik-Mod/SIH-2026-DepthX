@@ -7,19 +7,23 @@ import SampleGallery from './SampleGallery';
 const STEPS = [
   {
     title: 'Open a sample',
-    body: 'Pick any scene below. It was reconstructed ahead of time, so it opens in seconds and needs no model service.',
+    body: 'Pick any scene below. It was reconstructed ahead of time, so it opens in seconds and needs no GPU.',
   },
   {
-    title: 'Or upload your own',
-    body: 'Drop a top-down GeoTIFF, PNG or JPEG. A georeferenced GeoTIFF keeps its real scale and gets terrain added; other images assume 0.33 m/px.',
+    title: 'Warm up the GPU',
+    body: 'Press Warm up GPU on the card. A sleeping GPU takes about 20 to 30 seconds to start. It stays ready while this page is open and switches itself off when you leave.',
   },
   {
-    title: 'Generate',
-    body: 'The image is sent to the DepthX model service. Reconstruction takes about 30–90 seconds depending on size.',
+    title: 'Upload and generate',
+    body: 'Drop a top-down GeoTIFF, PNG or JPEG and press Generate. A georeferenced GeoTIFF keeps its real scale and gets terrain added; other images assume 0.33 m/px.',
+  },
+  {
+    title: 'Read the timers',
+    body: 'GPU start-up, model inference, terrain and download are timed separately. On a warm GPU the model itself takes a few seconds.',
   },
   {
     title: 'Explore and compare',
-    body: 'Drag to orbit, scroll to zoom, or switch to Fly / Walk. Toggle layers from the top bar, and click the source image in the corner to compare photo and height.',
+    body: 'Drag to orbit, scroll to zoom, or switch to Fly or Walk. Toggle layers from the top bar, and click the source image in the corner to compare photo and height.',
   },
 ];
 
@@ -40,7 +44,7 @@ export default function Home({ onReady }) {
           <h1>One overhead image in. A metric 3D scene out.</h1>
           <p className="lede">
             DepthWizard estimates the height of every pixel, in metres, from a single nadir
-            satellite or aerial image — then places it on real terrain and renders it as a scene
+            satellite or aerial image, then places it on real terrain and renders it as a scene
             you can fly through.
           </p>
           <dl className="specs">

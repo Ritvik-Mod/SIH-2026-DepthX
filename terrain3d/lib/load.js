@@ -193,18 +193,18 @@ export function sanityWarnings({ hm, bitmap, metadata, spacing }) {
   }
   const q = metadata?.quantity;
   if (q && q !== 'AGL') {
-    w.push(`metadata says quantity="${q}", not "AGL" — heights may be absolute elevation, not height above ground.`);
+    w.push(`metadata says quantity="${q}", not "AGL", so heights may be absolute elevation, not height above ground.`);
   }
   if (metadata?.field_source === 'ground_truth_lidar') {
     w.push('This bundle is GROUND TRUTH LiDAR, not a model prediction.');
   }
   if (metadata?.split === 'train') {
-    w.push('This tile is from the TRAIN split — for pipeline development only, never for accuracy claims.');
+    w.push('This tile is from the TRAIN split: for pipeline development only, never for accuracy claims.');
   }
   if (hm.geoSpacing && Math.abs(hm.geoSpacing - spacing) > 0.01) {
     w.push(`GeoTIFF says ${hm.geoSpacing.toFixed(3)} m/px but ${spacing} m/px is selected.`);
   }
-  if (hm.max > 400) w.push(`Max height ${hm.max.toFixed(0)} m is unusually tall — check the units.`);
+  if (hm.max > 400) w.push(`Max height ${hm.max.toFixed(0)} m is unusually tall. Check the units.`);
   return w;
 }
 

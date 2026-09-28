@@ -150,7 +150,7 @@ export default function Fallback2D({ dataset, onReset, reason }) {
         background: 'rgba(255,180,60,0.07)',
       }}>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>
-          3D view unavailable on this machine — showing the result in 2D instead
+          3D view unavailable on this machine. Showing the result in 2D instead.
         </div>
         <div style={{ opacity: 0.75, fontSize: 12 }}>
           The model ran and the height data loaded correctly. Only the WebGL
@@ -161,7 +161,7 @@ export default function Fallback2D({ dataset, onReset, reason }) {
           <ol style={{ margin: '8px 0 0 18px', lineHeight: 1.7 }}>
             <li>Open <code>chrome://settings/system</code> and turn on
                 “Use graphics acceleration when available”, then fully quit and reopen Chrome.</li>
-            <li>Open <code>chrome://gpu</code> — the “Graphics Feature Status” block
+            <li>Open <code>chrome://gpu</code>. The “Graphics Feature Status” block
                 names the exact reason WebGL is off.</li>
             <li>Open <code>chrome://flags/#ignore-gpu-blocklist</code>, set it to
                 Enabled, and relaunch.</li>

@@ -1,7 +1,6 @@
 # SIH26175 DepthWizard — problem statement vs what we have
 
-Written 4 Sept 2026. Companion to `PIPELINE.md` (what is built) and `MASTER_PLAN.md`
-(how we close the gaps). This file is the honest scorecard: **what the PS asks, what
+Written 4 Sept 2026. Companion to `PIPELINE.md` (what is built). This file is the honest scorecard: **what the PS asks, what
 exists, what does not, and what we have deliberately decided not to do.**
 
 Written to be handed to a fresh agent or a reviewer without further context.

@@ -57,15 +57,19 @@ implemented but OFF** (`w_shadow: 0.0`) — see the negative result below.
 |---|---|
 | building MAE | **1.585 m** (best) / 1.597 final |
 | building r | **0.901** |
-| building bias | −0.387 m |
-| overall MAE | 2.849 m |
-| overall r | 0.739 |
-| overall bias | **−2.019 m** |
+| building RMSE | 2.629 m |
+| building bias | −0.356 m |
+| overall MAE | 2.913 m |
+| overall RMSE | 5.631 m |
+| overall r | 0.728 |
+| overall bias | **−2.116 m** |
 | sharpness ratio | 0.023 |
 
+MAE, RMSE, r and bias are all from one checkpoint: best building MAE, epoch 37.
+
 Buildings transfer almost perfectly — 2.3% gap, correlation 0.901 vs 0.912. But a
-**−2.02 m systematic offset** appears on the new city and overall correlation drops
-0.93 → 0.74. The offset is what a scale+offset calibration removes downstream; the
+**−2.12 m systematic offset** appears on the new city and overall correlation drops
+0.93 → 0.73. The offset is what a scale+offset calibration removes downstream; the
 correlation drop is structure and is not fixable that way.
 
 **Caveat, state it every time:** measured on the 400-tile `holdout_val` set, which
@@ -99,8 +103,7 @@ fabric*, not a taller one (max 99.7 m).
 
 - **Sharpness ratio 0.084–0.133 against 1.0 for truth.** Calibration by degrading the
   ground truth puts the output at roughly truth blurred at **σ ≈ 3 px ≈ 2 m**. Four
-  approaches have failed to move it. Open problem; see `FINETUNE_INDIA_PLAN.md` and
-  `HANDOFF_SESSION2.md` §4.
+  approaches have failed to move it. Open problem.
 - **Trained GSD band is 0.165–0.65 m/px.** 1 m Cartosat-2S MX is outside it. Cartosat-3
   pan (0.25 m) is inside. `scripts/predict_external.py` resamples before inference —
   bypass that and the number is meaningless.

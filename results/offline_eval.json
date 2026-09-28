@@ -1,0 +1,21 @@
+{
+  "source": "Offline evaluation by Ritvik on the training cluster. Transcribed from his summary of ~/SIH2026/outputs/stratified_test.json (per tile: stratified_test.csv) and outputs/holdout_vitl/log.jsonl (epoch 37 row). Replace with those files when committed.",
+  "checkpoint": {"name": "a7_vitl", "release": "v0.1.0",
+                 "sha256": "27c4098c4689ff7866fa09276637107c79cee9bf1ca7b1dd9d5d6cb9d4dbe1df"},
+  "gamus_test_strata": {
+    "method": "800 GAMUS test tiles, one centre 518x518 crop each (the website's tiled path is about 5% better). Strata from each tile's own class labels: urban 15% or more building; forested 30% or more tree; sparse under 5% building and under 10% tree; the rest mixed. Unseen tiles from cities seen in training.",
+    "urban":    {"tiles": 320, "mae_m": 1.592, "rmse_m": 2.859, "bias_m": -0.06, "r": 0.930},
+    "sparse":   {"tiles": 103, "mae_m": 0.313, "rmse_m": 1.051, "bias_m": 0.02,  "r": 0.737},
+    "forested": {"tiles": 293, "mae_m": 3.397, "rmse_m": 5.511, "bias_m": 1.20,  "r": 0.846},
+    "mixed":    {"tiles": 84,  "mae_m": 0.891, "rmse_m": 1.976, "bias_m": 0.08,  "r": 0.890}
+  },
+  "holdout_nyc": {
+    "method": "Same recipe retrained with New York removed from training (holdout_vitl), scored on New York. One checkpoint: best building MAE, epoch 37.",
+    "buildings":  {"mae_m": 1.585, "rmse_m": 2.629, "bias_m": -0.356, "r": 0.901},
+    "all_pixels": {"mae_m": 2.913, "rmse_m": 5.631, "bias_m": -2.116, "r": 0.728}
+  },
+  "cop30_terrain_alone": {
+    "method": "Copernicus GLO-30 derived terrain vs swisstopo LiDAR, 10 scenes.",
+    "mae_m": 3.639, "rmse_m": 4.944, "bias_m": 1.95
+  }
+}

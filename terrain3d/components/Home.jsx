@@ -3,6 +3,7 @@
 import Brand from './Brand';
 import UploadPanel from './UploadPanel';
 import SampleGallery from './SampleGallery';
+import Metrics from './Metrics';
 
 const STEPS = [
   {
@@ -74,6 +75,8 @@ export default function Home({ onReady }) {
         </div>
 
         <SampleGallery onReady={onReady} />
+
+        <Metrics />
       </main>
 
       <footer className="homeFoot">

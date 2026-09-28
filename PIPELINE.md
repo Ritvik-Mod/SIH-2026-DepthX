@@ -37,7 +37,7 @@ plausible and is completely wrong, and nothing downstream catches it.
 - **A7 (ViT-L) is the shipped model.** In-domain building MAE **1.549 m**.
 - **Held-out city (NYC, never trained on): building MAE 1.585 m, r 0.901.**
 - Two independent unseen splits agree to 2.5% (test 1.600 m, val 1.560 m).
-- 22 bugs found and fixed, documented in `HANDOFF.md` §7 and `HANDOFF_SESSION2.md` §2.
+- 22 bugs found and fixed during development.
 - 5 test modules pass; `scripts/sanity.py` is 16/16 on real GAMUS.
 
 ### Infrastructure

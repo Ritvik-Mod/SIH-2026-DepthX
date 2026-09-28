@@ -1,0 +1,906 @@
+{
+  "generated": "2026-09-28 15:26 UTC",
+  "model": "a7_vitl_v0.1.0 (DINOv2 ViT-L + DPT, bins head)",
+  "deployment": "Modal, NVIDIA L4, TF32",
+  "scenes": {
+    "baden": {
+      "dataset": "swisstopo",
+      "relief_m": 95.56,
+      "built_fraction": 0.57,
+      "groups": [
+        "swiss_all",
+        "hilly",
+        "urban"
+      ],
+      "agl": {
+        "mae_m": 2.847,
+        "rmse_m": 4.278,
+        "bias_m": -2.168,
+        "r": 0.8781,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 2.898,
+        "rmse_m": 4.299,
+        "bias_m": -2.117,
+        "r": 0.9738,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 4.787,
+        "rmse_m": 7.002,
+        "bias_m": -0.125,
+        "r": 0.9236,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 5.138,
+        "rmse_m": 7.952,
+        "bias_m": -3.771,
+        "r": 0.9236,
+        "pixels": 1048576
+      },
+      "datum_offset_m": 3.65,
+      "dtm_source": "dem_file"
+    },
+    "montreux": {
+      "dataset": "swisstopo",
+      "relief_m": 46.19,
+      "built_fraction": 0.41,
+      "groups": [
+        "swiss_all"
+      ],
+      "agl": {
+        "mae_m": 1.79,
+        "rmse_m": 3.058,
+        "bias_m": -0.366,
+        "r": 0.9105,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.813,
+        "rmse_m": 3.07,
+        "bias_m": -0.343,
+        "r": 0.981,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 3.565,
+        "rmse_m": 4.711,
+        "bias_m": 0.828,
+        "r": 0.9549,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 3.545,
+        "rmse_m": 4.65,
+        "bias_m": 0.343,
+        "r": 0.9549,
+        "pixels": 1048576
+      },
+      "datum_offset_m": 0.48,
+      "dtm_source": "dem_file"
+    },
+    "neuchatel": {
+      "dataset": "swisstopo",
+      "relief_m": 35.72,
+      "built_fraction": 0.57,
+      "groups": [
+        "swiss_all",
+        "urban"
+      ],
+      "agl": {
+        "mae_m": 2.036,
+        "rmse_m": 3.187,
+        "bias_m": -0.92,
+        "r": 0.9363,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 2.04,
+        "rmse_m": 3.191,
+        "bias_m": -0.916,
+        "r": 0.956,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 5.14,
+        "rmse_m": 5.912,
+        "bias_m": 4.715,
+        "r": 0.94,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 2.74,
+        "rmse_m": 3.639,
+        "bias_m": -0.725,
+        "r": 0.94,
+        "pixels": 1048576
+      },
+      "datum_offset_m": 5.44,
+      "dtm_source": "dem_file"
+    },
+    "schaffhausen": {
+      "dataset": "swisstopo",
+      "relief_m": 32.39,
+      "built_fraction": 0.57,
+      "groups": [
+        "swiss_all",
+        "urban"
+      ],
+      "agl": {
+        "mae_m": 2.01,
+        "rmse_m": 3.358,
+        "bias_m": -0.729,
+        "r": 0.9031,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 2.011,
+        "rmse_m": 3.358,
+        "bias_m": -0.729,
+        "r": 0.9412,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 3.777,
+        "rmse_m": 4.663,
+        "bias_m": 2.385,
+        "r": 0.9103,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 3.091,
+        "rmse_m": 4.208,
+        "bias_m": -1.288,
+        "r": 0.9103,
+        "pixels": 1048576
+      },
+      "datum_offset_m": 3.67,
+      "dtm_source": "dem_file"
+    },
+    "sierre": {
+      "dataset": "swisstopo",
+      "relief_m": 31.26,
+      "built_fraction": 0.34,
+      "groups": [
+        "swiss_all",
+        "sparse"
+      ],
+      "agl": {
+        "mae_m": 1.385,
+        "rmse_m": 2.541,
+        "bias_m": -0.697,
+        "r": 0.892,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.44,
+        "rmse_m": 2.552,
+        "bias_m": -0.642,
+        "r": 0.9615,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 4.234,
+        "rmse_m": 6.649,
+        "bias_m": -2.913,
+        "r": 0.7436,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 4.328,
+        "rmse_m": 6.844,
+        "bias_m": -3.333,
+        "r": 0.7436,
+        "pixels": 1048576
+      },
+      "datum_offset_m": 0.42,
+      "dtm_source": "dem_file"
+    },
+    "spiez": {
+      "dataset": "swisstopo",
+      "relief_m": 87.03,
+      "built_fraction": 0.3,
+      "groups": [
+        "swiss_all",
+        "hilly",
+        "sparse"
+      ],
+      "agl": {
+        "mae_m": 1.003,
+        "rmse_m": 1.718,
+        "bias_m": 0.22,
+        "r": 0.9133,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.054,
+        "rmse_m": 1.751,
+        "bias_m": 0.271,
+        "r": 0.9936,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 2.343,
+        "rmse_m": 3.18,
+        "bias_m": -1.25,
+        "r": 0.9827,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 2.252,
+        "rmse_m": 3.009,
+        "bias_m": -0.708,
+        "r": 0.9827,
+        "pixels": 1048576
+      },
+      "datum_offset_m": -0.54,
+      "dtm_source": "dem_file"
+    },
+    "stmoritz": {
+      "dataset": "swisstopo",
+      "relief_m": 114.82,
+      "built_fraction": 0.49,
+      "groups": [
+        "swiss_all",
+        "hilly"
+      ],
+      "agl": {
+        "mae_m": 2.01,
+        "rmse_m": 3.343,
+        "bias_m": -0.617,
+        "r": 0.9052,
+        "pixels": 1039360
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 2.113,
+        "rmse_m": 3.46,
+        "bias_m": -0.515,
+        "r": 0.9881,
+        "pixels": 1039360
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 5.804,
+        "rmse_m": 7.019,
+        "bias_m": 5.206,
+        "r": 0.9774,
+        "pixels": 1039360
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 3.586,
+        "rmse_m": 4.817,
+        "bias_m": -1.021,
+        "r": 0.9774,
+        "pixels": 1039360
+      },
+      "datum_offset_m": 6.23,
+      "dtm_source": "dem_file"
+    },
+    "vevey": {
+      "dataset": "swisstopo",
+      "relief_m": 34.64,
+      "built_fraction": 0.55,
+      "groups": [
+        "swiss_all",
+        "urban"
+      ],
+      "agl": {
+        "mae_m": 1.856,
+        "rmse_m": 3.104,
+        "bias_m": 0.146,
+        "r": 0.9273,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.868,
+        "rmse_m": 3.111,
+        "bias_m": 0.158,
+        "r": 0.9376,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 4.219,
+        "rmse_m": 5.114,
+        "bias_m": 3.304,
+        "r": 0.8989,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 2.759,
+        "rmse_m": 3.906,
+        "bias_m": -0.126,
+        "r": 0.8989,
+        "pixels": 1048576
+      },
+      "datum_offset_m": 3.43,
+      "dtm_source": "dem_file"
+    },
+    "weggis": {
+      "dataset": "swisstopo",
+      "relief_m": 98.45,
+      "built_fraction": 0.32,
+      "groups": [
+        "swiss_all",
+        "hilly",
+        "sparse"
+      ],
+      "agl": {
+        "mae_m": 1.226,
+        "rmse_m": 2.401,
+        "bias_m": -0.391,
+        "r": 0.9169,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.241,
+        "rmse_m": 2.412,
+        "bias_m": -0.375,
+        "r": 0.9946,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 2.265,
+        "rmse_m": 3.083,
+        "bias_m": 0.744,
+        "r": 0.9919,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 2.149,
+        "rmse_m": 3.005,
+        "bias_m": -0.275,
+        "r": 0.9919,
+        "pixels": 1048576
+      },
+      "datum_offset_m": 1.02,
+      "dtm_source": "dem_file"
+    },
+    "zug": {
+      "dataset": "swisstopo",
+      "relief_m": 23.83,
+      "built_fraction": 0.36,
+      "groups": [
+        "swiss_all",
+        "sparse"
+      ],
+      "agl": {
+        "mae_m": 1.283,
+        "rmse_m": 2.391,
+        "bias_m": 0.425,
+        "r": 0.9456,
+        "pixels": 1048576
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.284,
+        "rmse_m": 2.392,
+        "bias_m": 0.426,
+        "r": 0.9714,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_raw": {
+        "mae_m": 2.696,
+        "rmse_m": 3.769,
+        "bias_m": 1.815,
+        "r": 0.9602,
+        "pixels": 1048576
+      },
+      "dsm_live_pipeline_datum_aligned": {
+        "mae_m": 2.679,
+        "rmse_m": 3.734,
+        "bias_m": 1.74,
+        "r": 0.9602,
+        "pixels": 1048576
+      },
+      "datum_offset_m": 0.07,
+      "dtm_source": "dem_file"
+    },
+    "DC_02_26": {
+      "dataset": "GAMUS val (Washington DC)",
+      "agl": {
+        "mae_m": 1.909,
+        "rmse_m": 3.415,
+        "bias_m": -0.564,
+        "r": 0.9399,
+        "pixels": 1047673
+      }
+    },
+    "DC_04_23": {
+      "dataset": "GAMUS val (Washington DC)",
+      "agl": {
+        "mae_m": 4.108,
+        "rmse_m": 5.564,
+        "bias_m": 0.166,
+        "r": 0.864,
+        "pixels": 1046695
+      }
+    },
+    "DC_04_27": {
+      "dataset": "GAMUS val (Washington DC)",
+      "agl": {
+        "mae_m": 1.593,
+        "rmse_m": 2.693,
+        "bias_m": -0.197,
+        "r": 0.9041,
+        "pixels": 1048540
+      }
+    },
+    "DC_08_31": {
+      "dataset": "GAMUS val (Washington DC)",
+      "agl": {
+        "mae_m": 1.633,
+        "rmse_m": 2.596,
+        "bias_m": -0.1,
+        "r": 0.9104,
+        "pixels": 1048357
+      }
+    },
+    "DC_09_33": {
+      "dataset": "GAMUS val (Washington DC)",
+      "agl": {
+        "mae_m": 1.327,
+        "rmse_m": 2.317,
+        "bias_m": 0.278,
+        "r": 0.9122,
+        "pixels": 1041723
+      }
+    },
+    "DC_10_30": {
+      "dataset": "GAMUS val (Washington DC)",
+      "agl": {
+        "mae_m": 1.686,
+        "rmse_m": 2.998,
+        "bias_m": 0.197,
+        "r": 0.9049,
+        "pixels": 1048012
+      }
+    }
+  },
+  "groups": {
+    "swiss_all": {
+      "agl": {
+        "mae_m": 1.744,
+        "rmse_m": 3.013,
+        "bias_m": -0.51,
+        "r": 0.9127,
+        "pixels": 10476544
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.776,
+        "rmse_m": 3.035,
+        "bias_m": -0.478,
+        "r": 1.0,
+        "pixels": 10476544
+      }
+    },
+    "hilly": {
+      "agl": {
+        "mae_m": 1.771,
+        "rmse_m": 3.089,
+        "bias_m": -0.739,
+        "r": 0.8949,
+        "pixels": 4185088
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.826,
+        "rmse_m": 3.135,
+        "bias_m": -0.684,
+        "r": 1.0,
+        "pixels": 4185088
+      }
+    },
+    "urban": {
+      "agl": {
+        "mae_m": 2.187,
+        "rmse_m": 3.513,
+        "bias_m": -0.918,
+        "r": 0.9045,
+        "pixels": 4194304
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 2.204,
+        "rmse_m": 3.522,
+        "bias_m": -0.901,
+        "r": 0.992,
+        "pixels": 4194304
+      }
+    },
+    "sparse": {
+      "agl": {
+        "mae_m": 1.224,
+        "rmse_m": 2.285,
+        "bias_m": -0.111,
+        "r": 0.9144,
+        "pixels": 4194304
+      },
+      "dsm_reference_terrain": {
+        "mae_m": 1.255,
+        "rmse_m": 2.298,
+        "bias_m": -0.08,
+        "r": 0.9996,
+        "pixels": 4194304
+      }
+    },
+    "swiss_buildings": {
+      "agl": {
+        "mae_m": 3.095,
+        "rmse_m": 4.168,
+        "bias_m": -1.648,
+        "r": 0.8138,
+        "pixels": 3346068
+      }
+    },
+    "swiss_vegetation": {
+      "agl": {
+        "mae_m": 3.198,
+        "rmse_m": 4.369,
+        "bias_m": -2.036,
+        "r": 0.7733,
+        "pixels": 1395826
+      }
+    },
+    "swiss_ground": {
+      "agl": {
+        "mae_m": 0.602,
+        "rmse_m": 1.342,
+        "bias_m": 0.526,
+        "r": 0.3422,
+        "pixels": 5734650
+      }
+    },
+    "gamus_all": {
+      "agl": {
+        "mae_m": 2.043,
+        "rmse_m": 3.439,
+        "bias_m": -0.037,
+        "r": 0.9396,
+        "pixels": 6281000
+      }
+    },
+    "gamus_buildings": {
+      "agl": {
+        "mae_m": 1.702,
+        "rmse_m": 2.612,
+        "bias_m": 0.263,
+        "r": 0.8938,
+        "pixels": 1401995
+      }
+    },
+    "gamus_trees": {
+      "agl": {
+        "mae_m": 3.42,
+        "rmse_m": 4.762,
+        "bias_m": -0.715,
+        "r": 0.8875,
+        "pixels": 2208106
+      }
+    },
+    "gamus_ground": {
+      "agl": {
+        "mae_m": 1.079,
+        "rmse_m": 2.339,
+        "bias_m": 0.362,
+        "r": 0.8575,
+        "pixels": 2668172
+      }
+    },
+    "swiss_dsm_live_raw": {
+      "dsm": {
+        "mae_m": 3.881,
+        "rmse_m": 5.303,
+        "bias_m": 1.468,
+        "r": 0.9999,
+        "pixels": 10476544
+      }
+    },
+    "swiss_dsm_live_datum_aligned": {
+      "dsm": {
+        "mae_m": 3.226,
+        "rmse_m": 4.828,
+        "bias_m": -0.916,
+        "r": 0.9999,
+        "pixels": 10476544
+      }
+    }
+  },
+  "timing": [
+    {
+      "scene": "baden",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 49.35,
+      "inference_s": 1.07,
+      "pipeline_s": 3.76
+    },
+    {
+      "scene": "baden",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 8.89,
+      "inference_s": 1.05,
+      "pipeline_s": 5.61
+    },
+    {
+      "scene": "montreux",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 4.03,
+      "inference_s": 1.06,
+      "pipeline_s": 2.87
+    },
+    {
+      "scene": "montreux",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 4.13,
+      "inference_s": 1.05,
+      "pipeline_s": 5.21
+    },
+    {
+      "scene": "neuchatel",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 2.95,
+      "inference_s": 1.06,
+      "pipeline_s": 2.89
+    },
+    {
+      "scene": "neuchatel",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 3.26,
+      "inference_s": 1.06,
+      "pipeline_s": 5.21
+    },
+    {
+      "scene": "schaffhausen",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 5.55,
+      "inference_s": 1.07,
+      "pipeline_s": 3.25
+    },
+    {
+      "scene": "schaffhausen",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 4.22,
+      "inference_s": 1.07,
+      "pipeline_s": 6.28
+    },
+    {
+      "scene": "sierre",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 3.91,
+      "inference_s": 1.07,
+      "pipeline_s": 3.06
+    },
+    {
+      "scene": "sierre",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 3.86,
+      "inference_s": 1.06,
+      "pipeline_s": 5.25
+    },
+    {
+      "scene": "spiez",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 4.11,
+      "inference_s": 1.08,
+      "pipeline_s": 3.03
+    },
+    {
+      "scene": "spiez",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 3.16,
+      "inference_s": 1.09,
+      "pipeline_s": 5.26
+    },
+    {
+      "scene": "stmoritz",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 2.96,
+      "inference_s": 1.07,
+      "pipeline_s": 3.19
+    },
+    {
+      "scene": "stmoritz",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 3.82,
+      "inference_s": 1.07,
+      "pipeline_s": 5.16
+    },
+    {
+      "scene": "vevey",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 3.81,
+      "inference_s": 1.07,
+      "pipeline_s": 3.12
+    },
+    {
+      "scene": "vevey",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 3.19,
+      "inference_s": 1.08,
+      "pipeline_s": 5.41
+    },
+    {
+      "scene": "weggis",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 3.96,
+      "inference_s": 1.09,
+      "pipeline_s": 3.11
+    },
+    {
+      "scene": "weggis",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 3.22,
+      "inference_s": 1.08,
+      "pipeline_s": 5.05
+    },
+    {
+      "scene": "zug",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 2.77,
+      "inference_s": 1.07,
+      "pipeline_s": 2.95
+    },
+    {
+      "scene": "zug",
+      "px": [
+        1024,
+        1024
+      ],
+      "dtm": true,
+      "wait_s": 2.78,
+      "inference_s": 1.07,
+      "pipeline_s": 5.2
+    },
+    {
+      "scene": "DC_02_26",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 3.23,
+      "inference_s": 1.11,
+      "pipeline_s": 3.6
+    },
+    {
+      "scene": "DC_04_23",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 2.43,
+      "inference_s": 1.11,
+      "pipeline_s": 3.52
+    },
+    {
+      "scene": "DC_04_27",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 3.66,
+      "inference_s": 1.11,
+      "pipeline_s": 3.57
+    },
+    {
+      "scene": "DC_08_31",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 2.54,
+      "inference_s": 1.12,
+      "pipeline_s": 3.59
+    },
+    {
+      "scene": "DC_09_33",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 2.72,
+      "inference_s": 1.11,
+      "pipeline_s": 3.66
+    },
+    {
+      "scene": "DC_10_30",
+      "px": [
+        1024,
+        1024
+      ],
+      "wait_s": 2.46,
+      "inference_s": 1.11,
+      "pipeline_s": 3.5
+    }
+  ],
+  "evaluation_job_ids": [
+    "eac81470b4b2",
+    "edbdf8737c2e",
+    "e98c71c81499",
+    "e7217c49353c",
+    "eecefff8938c",
+    "ee2631295135",
+    "ecf71c55f11b",
+    "ec9dd8205ba5",
+    "e107cd048930",
+    "ebde64e2407f",
+    "e275d8a6c813",
+    "e2fd75c38e65",
+    "eb5b10d60399",
+    "e1d322587ec5",
+    "e5a75f4f4872",
+    "e7bfcdca0e1b",
+    "ea9fc7bdd821",
+    "efd8d2f852e6",
+    "ec2f3a930de0",
+    "ee4f1c789a4a",
+    "e091682062c5",
+    "eb936f169894",
+    "e2bec80e890d",
+    "e934f96c63b6",
+    "e4bd66195d0c",
+    "ed2411b36213"
+  ]
+}

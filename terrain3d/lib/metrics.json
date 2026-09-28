@@ -1,0 +1,117 @@
+{
+  "subtitle": "Deployed model, every pixel, on data it never trained on: 10 Swiss scenes with airborne LiDAR and 800 GAMUS test tiles",
+  "headline": [
+    {
+      "label": "Height error (MAE)",
+      "value": "1.74",
+      "unit": "m",
+      "note": "Per-pixel height above ground, 10 independent Swiss scenes"
+    },
+    {
+      "label": "Correlation",
+      "value": "0.913",
+      "unit": "",
+      "note": "Pearson r, predicted vs LiDAR height above ground, per pixel"
+    },
+    {
+      "label": "RMSE",
+      "value": "3.01",
+      "unit": "m",
+      "note": "Root-mean-square height error, same scenes; weights the large misses"
+    },
+    {
+      "label": "Model inference",
+      "value": "1.1",
+      "unit": "s",
+      "note": "Per 1024 px scene on an NVIDIA L4, once the GPU is warm"
+    }
+  ],
+  "landscapes": [
+    {
+      "name": "Urban",
+      "detail": "GAMUS test, 320 tiles, 15% or more buildings",
+      "mae": 1.592,
+      "rmse": 2.859,
+      "r": 0.93
+    },
+    {
+      "name": "Sparse",
+      "detail": "GAMUS test, 103 tiles, almost no buildings or trees, so little height for r to track",
+      "mae": 0.313,
+      "rmse": 1.051,
+      "r": 0.737
+    },
+    {
+      "name": "Hilly",
+      "detail": "swisstopo LiDAR, 10 alpine and lakeside scenes, 24 to 115 m relief",
+      "mae": 1.744,
+      "rmse": 3.013,
+      "r": 0.9127
+    },
+    {
+      "name": "Forested",
+      "detail": "GAMUS test, 293 tiles, 30% or more trees",
+      "mae": 3.397,
+      "rmse": 5.511,
+      "r": 0.846
+    },
+    {
+      "name": "Mixed",
+      "detail": "GAMUS test, 84 tiles, everything in between",
+      "mae": 0.891,
+      "rmse": 1.976,
+      "r": 0.89
+    }
+  ],
+  "dsm": [
+    {
+      "name": "DSM as deployed",
+      "mae": 3.881,
+      "rmse": 5.303,
+      "r": 0.9474,
+      "bias": 1.468,
+      "note": "Model heights on the free 30 m Copernicus terrain, scored against the LiDAR surface. About 2 m of this comes from that terrain model, which is 3.64 m MAE off on its own, not from the height model."
+    },
+    {
+      "name": "DSM on LiDAR terrain",
+      "mae": 1.776,
+      "rmse": 3.035,
+      "r": 0.9726,
+      "bias": -0.478,
+      "note": "The ceiling: the same predicted heights on surveyed ground, so the error left is the model's alone. r is the median per scene."
+    }
+  ],
+  "rendering": [
+    {
+      "label": "Projection fidelity",
+      "value": "0.2 cm mean deviation",
+      "note": "Cloud GPU output vs the reference pipeline, pixel for pixel; texture on the same grid as the heights"
+    },
+    {
+      "label": "GPU start-up",
+      "value": "9 to 44 s, once",
+      "note": "Timed separately on screen; it switches itself off about 15 s after the page closes"
+    },
+    {
+      "label": "Stability",
+      "value": "15 of 15 runs clean",
+      "note": "Cold and warm starts, results downloaded in parallel; 2D fallback when WebGL is missing"
+    },
+    {
+      "label": "Visual fidelity",
+      "value": "1.05 M vertex mesh",
+      "note": "Full-resolution imagery, crisp walls, facade detail, instanced trees, sun shadows"
+    },
+    {
+      "label": "Navigation",
+      "value": "Orbit, fly, walk",
+      "note": "Collision against the rendered surface; source-image minimap and swipe comparison"
+    },
+    {
+      "label": "Deployment",
+      "value": "Vercel + Modal L4",
+      "note": "Standalone web app; five precomputed scenes open in seconds with no GPU at all"
+    }
+  ],
+  "footnote": "Swiss scenes: swisstopo swissSURFACE3D and swissALTI3D airborne LiDAR, a country and sensor the model never saw, scored through the live service (scene MAE 1.00 to 2.85 m). GAMUS strata: test tiles never trained on, from US cities that were, one centre crop per tile. Reproduce the Swiss figures with scripts/evaluate_live.py."
+}

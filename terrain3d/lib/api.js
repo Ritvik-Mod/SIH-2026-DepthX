@@ -13,14 +13,18 @@
  * poll instead, which also gives the UI something honest to display.
  *
  * The default is the Modal deployment: its address is permanent, so it is simply the
- * built-in value. NEXT_PUBLIC_DEPTHX_API or ?api=<url> still override it -- that is how
+ * built-in value. ?api=<url> still overrides it -- that is how
  * the old Mac + tunnel setup can be pointed at in an emergency.
  */
 
 export const MODAL_BASE = 'https://chandlerismod--depthx-api.modal.run';
 
-const BUILD_TIME_BASE =
-  process.env.NEXT_PUBLIC_DEPTHX_API?.replace(/\/$/, '') || MODAL_BASE;
+// Deliberately NOT read from NEXT_PUBLIC_DEPTHX_API any more. That variable is compiled
+// in at build time, and a stale value left in Vercel from the tunnel era silently
+// pointed the live site at a hostname that no longer existed -- "GPU unreachable" for
+// every visitor, with correct code deployed. The Modal address never changes, so it is
+// simply the default; ?api=<url> remains the way to test another backend.
+const BUILD_TIME_BASE = MODAL_BASE;
 const TOKEN = process.env.NEXT_PUBLIC_DEPTHX_TOKEN || '';
 const STORE_KEY = 'depthx_api_base';
 
@@ -34,7 +38,7 @@ const clean = (u) => (u || '').trim().replace(/\/$/, '');
  *
  *   1. ?api=https://...   in the URL
  *   2. an address set with the "Address" editor on the upload card
- *   3. the build-time NEXT_PUBLIC_DEPTHX_API, else MODAL_BASE
+ *   3. MODAL_BASE
  *
  * Overrides last for THIS TAB ONLY (sessionStorage). They used to be remembered in
  * localStorage indefinitely, which made sense while the backend was a tunnel whose

@@ -109,7 +109,7 @@ export default function AdminPage() {
       total: runs.length,
       done: done.length,
       failed: runs.filter((r) => r.status === 'error').length,
-      people: new Set(runs.map((r) => r.ip)).size,
+      people: new Set(runs.map((r) => r.visitor)).size,
       inference: median(done.map((r) => r.timing?.inference_s)),
       cold: median(done.filter((r) => r.cold).map((r) => r.timing?.wait_s)),
     };
@@ -162,7 +162,7 @@ export default function AdminPage() {
               <div><span>Runs</span><b>{stats.total}</b></div>
               <div><span>Succeeded</span><b>{stats.done}</b></div>
               <div><span>Failed</span><b>{stats.failed}</b></div>
-              <div><span>Distinct IPs</span><b>{stats.people}</b></div>
+              <div><span>Distinct visitors</span><b>{stats.people}</b></div>
               <div><span>Median inference</span><b>{stats.inference != null ? `${stats.inference.toFixed(1)} s` : 'n/a'}</b></div>
               <div><span>Median cold start</span><b>{stats.cold != null ? `${stats.cold.toFixed(1)} s` : 'n/a'}</b></div>
               <div>
@@ -198,7 +198,7 @@ export default function AdminPage() {
                       <span>{r.georeferenced ? 'georeferenced' : 'not georeferenced'}</span>
                     </div>
                     <div className="aMeta">
-                      <span>IP {r.ip}</span>
+                      <span className="aPlace"><Icon name="globe" size={12} />{r.location || 'Unknown location'}</span>
                       <span>{browser(r.user_agent)}</span>
                       {r.origin && <span>{r.origin.replace(/^https?:\/\//, '')}</span>}
                     </div>
@@ -226,7 +226,7 @@ export default function AdminPage() {
             <img src={big.url} alt="" />
             <figcaption>
               <b>{big.run.filename}</b>
-              <span>{new Date((big.run.submitted_at || 0) * 1000).toLocaleString()} · IP {big.run.ip}</span>
+              <span>{new Date((big.run.submitted_at || 0) * 1000).toLocaleString()} · {big.run.location || 'Unknown location'}</span>
               <button type="button" className="btnText" onClick={() => setBig(null)}>Close</button>
             </figcaption>
           </figure>

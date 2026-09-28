@@ -593,6 +593,60 @@ def web():
         return Response(p.read_bytes(), media_type=media)
 
     # ---------------------------------------------------------------- admin
+    def locate(ips: list) -> dict:
+        """IP -> "City, Region, Country". Cached per IP; one batch request for misses.
+
+        ip-api.com's batch endpoint: free, no key, up to 100 addresses per request.
+        Any failure degrades to "Unknown location" -- the log must never fail to load
+        because a geolocation service is down.
+        """
+        import ipaddress
+        import urllib.request
+        out, misses = {}, []
+        for ip in set(ips):
+            try:
+                a = ipaddress.ip_address(ip)
+                if a.is_private or a.is_loopback or a.is_link_local:
+                    out[ip] = "Local network"
+                    continue
+            except ValueError:
+                out[ip] = "Unknown location"
+                continue
+            hit = state.get(f"geo:{ip}", None)
+            if hit:
+                out[ip] = hit
+            else:
+                misses.append(ip)
+        for i in range(0, len(misses), 100):
+            chunk = misses[i:i + 100]
+            try:
+                req = urllib.request.Request(
+                    "http://ip-api.com/batch?fields=status,country,regionName,city,query",
+                    data=json.dumps(chunk).encode(), headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=4) as r:
+                    for row in json.loads(r.read()):
+                        ip = row.get("query")
+                        if row.get("status") == "success":
+                            parts = []
+                            for p in (row.get("city"), row.get("regionName"), row.get("country")):
+                                if p and p not in parts:
+                                    parts.append(p)
+                            place = ", ".join(parts) or "Unknown location"
+                            state[f"geo:{ip}"] = place
+                        else:
+                            place = "Unknown location"
+                        out[ip] = place
+            except Exception:
+                pass
+        return {ip: out.get(ip, "Unknown location") for ip in ips}
+
+    def visitor_tag(ip: str) -> str:
+        # A stable anonymous id, so "distinct visitors" can still be counted. Keyed
+        # with the admin secret: a bare hash of an IPv4 address is reversible by
+        # simply hashing all four billion of them.
+        key = os.environ.get("DEPTHX_ADMIN_PASSWORD", "depthx").encode()
+        return hmac.new(key, (ip or "").encode(), "sha256").hexdigest()[:8]
+
     @api.get("/api/admin/runs")
     def admin_runs(x_admin_password: str | None = Header(None)):
         check_admin(x_admin_password)
@@ -613,6 +667,13 @@ def web():
                     meta["has_preview"] = (d / "preview.jpg").exists()
                     runs.append(meta)
         runs.sort(key=lambda r: r.get("submitted_at", 0), reverse=True)
+        # The IP stays on the server (rate limiting needs it); the log page gets only
+        # a coarse location and an anonymous visitor tag, never the address itself.
+        places = locate([r.get("ip", "") for r in runs])
+        for r in runs:
+            ip = r.pop("ip", "")
+            r["location"] = places.get(ip, "Unknown location")
+            r["visitor"] = visitor_tag(ip)
         return {"runs": runs, "gpu": _gpu_state(), "active_pages": len(active_clients())}
 
     @api.get("/api/admin/runs/{run_id}/{what}")
